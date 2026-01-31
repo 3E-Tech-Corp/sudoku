@@ -25,7 +25,7 @@ export default function Login() {
     <div className="min-h-screen bg-gray-900 flex items-center justify-center px-4">
       <div className="max-w-md w-full space-y-8">
         <div className="text-center">
-          <h1 className="text-3xl font-bold text-white">ProjectTemplate</h1>
+          <h1 className="text-3xl font-bold text-white">Sudoku Admin</h1>
           <p className="mt-2 text-gray-400">Sign in to your account</p>
         </div>
         <form onSubmit={handleSubmit} className="mt-8 space-y-6 bg-gray-800 p-8 rounded-xl shadow-lg">

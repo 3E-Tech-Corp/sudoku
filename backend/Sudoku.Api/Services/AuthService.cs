@@ -4,7 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.IdentityModel.Tokens;
 
-namespace ProjectTemplate.Api.Services;
+namespace Sudoku.Api.Services;
 
 public class AuthService
 {
@@ -45,8 +45,8 @@ public class AuthService
     public string GenerateToken(string username, string role, int userId)
     {
         var key = _config["Jwt:Key"] ?? throw new InvalidOperationException("JWT Key not configured");
-        var issuer = _config["Jwt:Issuer"] ?? "ProjectTemplate";
-        var audience = _config["Jwt:Audience"] ?? "ProjectTemplate";
+        var issuer = _config["Jwt:Issuer"] ?? "Sudoku";
+        var audience = _config["Jwt:Audience"] ?? "Sudoku";
         var expiryHours = int.TryParse(_config["Jwt:ExpiryHours"], out var h) ? h : 24;
 
         var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key));

@@ -44,7 +44,7 @@ jobs:
           $backendPath = "F:\New_WWW\$siteName\API"
 
           Write-Host ">> Building backend..." -ForegroundColor Yellow
-          dotnet publish backend\ProjectTemplate.Api\ProjectTemplate.Api.csproj `
+          dotnet publish backend\Sudoku.Api\Sudoku.Api.csproj `
             --configuration Release `
             --output .\publish\backend
 

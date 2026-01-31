@@ -3,6 +3,8 @@ import { useAuth } from './contexts/AuthContext';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+import Landing from './pages/Landing';
+import GameRoom from './pages/GameRoom';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -19,24 +21,18 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  const { isAuthenticated, isLoading } = useAuth();
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="text-white text-lg">Loading...</div>
-      </div>
-    );
-  }
-
   return (
     <Routes>
+      {/* Public routes - Sudoku game */}
+      <Route path="/" element={<Landing />} />
+      <Route path="/room/:code" element={<GameRoom />} />
+
+      {/* Auth routes */}
+      <Route path="/login" element={<Login />} />
+
+      {/* Protected admin routes */}
       <Route
-        path="/login"
-        element={isAuthenticated ? <Navigate to="/" /> : <Login />}
-      />
-      <Route
-        path="/"
+        path="/admin"
         element={
           <PrivateRoute>
             <Layout />
@@ -45,6 +41,7 @@ export default function App() {
       >
         <Route index element={<Dashboard />} />
       </Route>
+
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
   );

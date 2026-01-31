@@ -14,7 +14,7 @@ export default function Layout() {
       {/* Sidebar */}
       <aside className="w-64 bg-gray-800 border-r border-gray-700 flex flex-col">
         <div className="p-6 border-b border-gray-700">
-          <h1 className="text-xl font-bold text-white">ProjectTemplate</h1>
+          <h1 className="text-xl font-bold text-white">Sudoku Admin</h1>
         </div>
         <nav className="flex-1 p-4 space-y-1">
           {navItems.map((item) => (

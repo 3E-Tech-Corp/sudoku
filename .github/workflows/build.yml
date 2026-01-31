@@ -15,10 +15,10 @@ jobs:
           dotnet-version: '8.0.x'
       - name: Restore
         run: dotnet restore
-        working-directory: backend/ProjectTemplate.Api
+        working-directory: backend/Sudoku.Api
       - name: Build
         run: dotnet build --no-restore --configuration Release
-        working-directory: backend/ProjectTemplate.Api
+        working-directory: backend/Sudoku.Api
 
   build-frontend:
     runs-on: ubuntu-latest

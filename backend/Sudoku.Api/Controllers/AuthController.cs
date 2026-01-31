@@ -3,10 +3,10 @@ using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
-using ProjectTemplate.Api.Models;
-using ProjectTemplate.Api.Services;
+using Sudoku.Api.Models;
+using Sudoku.Api.Services;
 
-namespace ProjectTemplate.Api.Controllers;
+namespace Sudoku.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]

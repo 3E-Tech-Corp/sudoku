@@ -3,20 +3,22 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Data.SqlClient;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
-using ProjectTemplate.Api.Services;
+using Sudoku.Api.Hubs;
+using Sudoku.Api.Services;
 using Dapper;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services
 builder.Services.AddControllers();
+builder.Services.AddSignalR();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new OpenApiInfo { Title = "ProjectTemplate API", Version = "v1" });
+    c.SwaggerDoc("v1", new OpenApiInfo { Title = "Sudoku API", Version = "v1" });
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
-        Description = "JWT Authorization header using the Bearer scheme. Enter 'Bearer' [space] and then your token.",
+        Description = "JWT Authorization header using the Bearer scheme.",
         Name = "Authorization",
         In = ParameterLocation.Header,
         Type = SecuritySchemeType.ApiKey,
@@ -36,8 +38,8 @@ builder.Services.AddSwaggerGen(c =>
 
 // JWT Authentication
 var jwtKey = builder.Configuration["Jwt:Key"] ?? throw new InvalidOperationException("JWT Key not configured");
-var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "ProjectTemplate";
-var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "ProjectTemplate";
+var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "Sudoku";
+var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "Sudoku";
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -51,6 +53,21 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidIssuer = jwtIssuer,
             ValidAudience = jwtAudience,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
+        };
+
+        // Allow SignalR to receive token from query string
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                var accessToken = context.Request.Query["access_token"];
+                var path = context.HttpContext.Request.Path;
+                if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+                {
+                    context.Token = accessToken;
+                }
+                return Task.CompletedTask;
+            }
         };
     });
 
@@ -71,10 +88,12 @@ builder.Services.AddCors(options =>
 
 // Register services
 builder.Services.AddSingleton<AuthService>();
+builder.Services.AddSingleton<SudokuGenerator>();
+builder.Services.AddScoped<RoomService>();
 
 var app = builder.Build();
 
-// Auto-migration: ensure Users table exists
+// Auto-migration
 using (var scope = app.Services.CreateScope())
 {
     var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
@@ -85,6 +104,8 @@ using (var scope = app.Services.CreateScope())
         {
             using var conn = new SqlConnection(connStr);
             await conn.OpenAsync();
+
+            // Users table (from template)
             await conn.ExecuteAsync(@"
                 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'Users')
                 BEGIN
@@ -99,6 +120,51 @@ using (var scope = app.Services.CreateScope())
                         UpdatedAt DATETIME2 NULL
                     );
                 END");
+
+            // SudokuPuzzles table
+            await conn.ExecuteAsync(@"
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'SudokuPuzzles')
+                BEGIN
+                    CREATE TABLE SudokuPuzzles (
+                        Id INT IDENTITY(1,1) PRIMARY KEY,
+                        Difficulty NVARCHAR(20) NOT NULL,
+                        InitialBoard NVARCHAR(MAX) NOT NULL,
+                        Solution NVARCHAR(MAX) NOT NULL,
+                        CreatedAt DATETIME2 DEFAULT GETUTCDATE()
+                    );
+                END");
+
+            // Rooms table
+            await conn.ExecuteAsync(@"
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'Rooms')
+                BEGIN
+                    CREATE TABLE Rooms (
+                        Id INT IDENTITY(1,1) PRIMARY KEY,
+                        Code NVARCHAR(10) NOT NULL UNIQUE,
+                        PuzzleId INT NOT NULL,
+                        HostName NVARCHAR(100),
+                        Difficulty NVARCHAR(20) DEFAULT 'Medium',
+                        Status NVARCHAR(20) DEFAULT 'Active',
+                        CurrentBoard NVARCHAR(MAX),
+                        PlayerColors NVARCHAR(MAX),
+                        CreatedAt DATETIME2 DEFAULT GETUTCDATE(),
+                        CompletedAt DATETIME2 NULL
+                    );
+                END");
+
+            // RoomMembers table
+            await conn.ExecuteAsync(@"
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'RoomMembers')
+                BEGIN
+                    CREATE TABLE RoomMembers (
+                        Id INT IDENTITY(1,1) PRIMARY KEY,
+                        RoomId INT NOT NULL,
+                        DisplayName NVARCHAR(100) NOT NULL,
+                        Color NVARCHAR(20) NOT NULL,
+                        JoinedAt DATETIME2 DEFAULT GETUTCDATE()
+                    );
+                END");
+
             app.Logger.LogInformation("Database migration completed successfully");
         }
         catch (Exception ex)
@@ -119,5 +185,6 @@ app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHub<SudokuHub>("/hubs/sudoku");
 
 app.Run();

@@ -1,4 +1,4 @@
-namespace ProjectTemplate.Api.Models;
+namespace Sudoku.Api.Models;
 
 public class User
 {

@@ -21,7 +21,7 @@ jobs:
 
       - name: Build Backend
         run: dotnet publish --configuration Release --output ./publish
-        working-directory: backend/ProjectTemplate.Api
+        working-directory: backend/Sudoku.Api
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -40,7 +40,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: backend
-          path: backend/ProjectTemplate.Api/publish/
+          path: backend/Sudoku.Api/publish/
 
       - name: Upload Frontend Artifact
         uses: actions/upload-artifact@v4
