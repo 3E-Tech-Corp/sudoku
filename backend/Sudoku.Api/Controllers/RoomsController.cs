@@ -30,9 +30,9 @@ public class RoomsController : ControllerBase
     }
 
     [HttpGet("{code}")]
-    public async Task<IActionResult> GetRoom(string code)
+    public async Task<IActionResult> GetRoom(string code, [FromQuery] string? player = null)
     {
-        var room = await _roomService.GetRoom(code.ToUpper());
+        var room = await _roomService.GetRoom(code.ToUpper(), player);
         if (room == null) return NotFound(new { message = "Room not found" });
         return Ok(room);
     }
@@ -46,5 +46,12 @@ public class RoomsController : ControllerBase
         var result = await _roomService.JoinRoom(code.ToUpper(), request);
         if (result == null) return NotFound(new { message = "Room not found" });
         return Ok(result);
+    }
+
+    [HttpGet("{code}/progress")]
+    public async Task<IActionResult> GetProgress(string code)
+    {
+        var progress = await _roomService.GetProgress(code.ToUpper());
+        return Ok(progress);
     }
 }

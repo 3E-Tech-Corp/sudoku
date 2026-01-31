@@ -175,6 +175,26 @@ using (var scope = app.Services.CreateScope())
                 IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Rooms') AND name = 'IsPublic')
                     ALTER TABLE Rooms ADD IsPublic BIT NOT NULL DEFAULT 0;");
 
+            // Add Mode column to Rooms if missing
+            await conn.ExecuteAsync(@"
+                IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Rooms') AND name = 'Mode')
+                    ALTER TABLE Rooms ADD Mode NVARCHAR(20) NOT NULL DEFAULT 'Cooperative';");
+
+            // CompetitiveBoards table
+            await conn.ExecuteAsync(@"
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'CompetitiveBoards')
+                BEGIN
+                    CREATE TABLE CompetitiveBoards (
+                        Id INT IDENTITY(1,1) PRIMARY KEY,
+                        RoomId INT NOT NULL,
+                        PlayerName NVARCHAR(100) NOT NULL,
+                        CurrentBoard NVARCHAR(MAX) NOT NULL,
+                        Notes NVARCHAR(MAX) NULL,
+                        FilledCount INT NOT NULL DEFAULT 0,
+                        CompletedAt DATETIME2 NULL
+                    );
+                END");
+
             app.Logger.LogInformation("Database migration completed successfully");
         }
         catch (Exception ex)

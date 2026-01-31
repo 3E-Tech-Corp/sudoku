@@ -21,7 +21,19 @@ public class Room
     public string? PlayerColors { get; set; }
     public string? Notes { get; set; }
     public bool IsPublic { get; set; }
+    public string Mode { get; set; } = "Cooperative";
     public DateTime CreatedAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
+}
+
+public class CompetitiveBoard
+{
+    public int Id { get; set; }
+    public int RoomId { get; set; }
+    public string PlayerName { get; set; } = "";
+    public string CurrentBoard { get; set; } = "";
+    public string? Notes { get; set; }
+    public int FilledCount { get; set; }
     public DateTime? CompletedAt { get; set; }
 }
 
@@ -41,6 +53,7 @@ public class CreateRoomRequest
     public string Difficulty { get; set; } = "Medium";
     public string HostName { get; set; } = "Host";
     public bool IsPublic { get; set; } = false;
+    public string Mode { get; set; } = "Cooperative";
 }
 
 public class JoinRoomRequest
@@ -52,6 +65,7 @@ public class CreateRoomResponse
 {
     public string Code { get; set; } = "";
     public string Difficulty { get; set; } = "";
+    public string Mode { get; set; } = "Cooperative";
 }
 
 public class RoomResponse
@@ -60,6 +74,7 @@ public class RoomResponse
     public string Difficulty { get; set; } = "";
     public string Status { get; set; } = "";
     public string? HostName { get; set; }
+    public string Mode { get; set; } = "Cooperative";
     public int[][] InitialBoard { get; set; } = [];
     public int[][] CurrentBoard { get; set; } = [];
     public int[][] Solution { get; set; } = [];
@@ -69,6 +84,9 @@ public class RoomResponse
     public bool IsPublic { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
+    // Competitive-specific fields (populated only in competitive mode)
+    public List<PlayerProgress>? Progress { get; set; }
+    public string? Winner { get; set; }
 }
 
 public class PublicRoomResponse
@@ -76,6 +94,7 @@ public class PublicRoomResponse
     public string Code { get; set; } = "";
     public string Difficulty { get; set; } = "";
     public string? HostName { get; set; }
+    public string Mode { get; set; } = "Cooperative";
     public int PlayerCount { get; set; }
     public DateTime CreatedAt { get; set; }
 }
@@ -92,6 +111,17 @@ public class JoinRoomResponse
     public string DisplayName { get; set; } = "";
     public string Color { get; set; } = "";
     public RoomResponse Room { get; set; } = new();
+}
+
+public class PlayerProgress
+{
+    public string DisplayName { get; set; } = "";
+    public string Color { get; set; } = "";
+    public int FilledCount { get; set; }
+    public int TotalCells { get; set; } = 81;
+    public bool IsCompleted { get; set; }
+    public DateTime? CompletedAt { get; set; }
+    public int? Rank { get; set; }
 }
 
 // Cell entry tracks who placed what

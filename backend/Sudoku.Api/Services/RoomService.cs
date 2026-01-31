@@ -45,6 +45,9 @@ public class RoomService
         var solutionJson = JsonSerializer.Serialize(solution);
         var code = GenerateCode();
 
+        // Validate mode
+        var mode = request.Mode == "Competitive" ? "Competitive" : "Cooperative";
+
         using var conn = GetConnection();
         await conn.OpenAsync();
 
@@ -63,8 +66,8 @@ public class RoomService
         }
 
         await conn.ExecuteAsync(@"
-            INSERT INTO Rooms (Code, PuzzleId, HostName, Difficulty, Status, CurrentBoard, PlayerColors, IsPublic)
-            VALUES (@Code, @PuzzleId, @HostName, @Difficulty, 'Active', @CurrentBoard, @PlayerColors, @IsPublic)",
+            INSERT INTO Rooms (Code, PuzzleId, HostName, Difficulty, Status, CurrentBoard, PlayerColors, IsPublic, Mode)
+            VALUES (@Code, @PuzzleId, @HostName, @Difficulty, 'Active', @CurrentBoard, @PlayerColors, @IsPublic, @Mode)",
             new
             {
                 Code = code,
@@ -73,7 +76,8 @@ public class RoomService
                 request.Difficulty,
                 CurrentBoard = puzzleJson,
                 PlayerColors = JsonSerializer.Serialize(initialColors),
-                request.IsPublic
+                request.IsPublic,
+                Mode = mode
             });
 
         // Add host as member if name provided
@@ -84,12 +88,39 @@ public class RoomService
                 INSERT INTO RoomMembers (RoomId, DisplayName, Color)
                 VALUES (@RoomId, @DisplayName, @Color)",
                 new { RoomId = room.Id, DisplayName = request.HostName, Color = PlayerColors[0] });
+
+            // If competitive, create a competitive board for the host
+            if (mode == "Competitive")
+            {
+                await CreateCompetitiveBoard(conn, room.Id, request.HostName, puzzleJson);
+            }
         }
 
-        return new CreateRoomResponse { Code = code, Difficulty = request.Difficulty };
+        return new CreateRoomResponse { Code = code, Difficulty = request.Difficulty, Mode = mode };
     }
 
-    public async Task<RoomResponse?> GetRoom(string code)
+    private async Task CreateCompetitiveBoard(SqlConnection conn, int roomId, string playerName, string initialBoard)
+    {
+        // Check if already exists
+        var existing = await conn.QuerySingleOrDefaultAsync<CompetitiveBoard>(
+            "SELECT * FROM CompetitiveBoards WHERE RoomId = @RoomId AND PlayerName = @PlayerName",
+            new { RoomId = roomId, PlayerName = playerName });
+        if (existing != null) return;
+
+        // Count given cells (non-zero cells in initial board are pre-filled)
+        var board = JsonSerializer.Deserialize<int[][]>(initialBoard)!;
+        int givenCount = 0;
+        for (int r = 0; r < 9; r++)
+            for (int c = 0; c < 9; c++)
+                if (board[r][c] != 0) givenCount++;
+
+        await conn.ExecuteAsync(@"
+            INSERT INTO CompetitiveBoards (RoomId, PlayerName, CurrentBoard, FilledCount)
+            VALUES (@RoomId, @PlayerName, @CurrentBoard, @FilledCount)",
+            new { RoomId = roomId, PlayerName = playerName, CurrentBoard = initialBoard, FilledCount = givenCount });
+    }
+
+    public async Task<RoomResponse?> GetRoom(string code, string? playerName = null)
     {
         using var conn = GetConnection();
         await conn.OpenAsync();
@@ -109,7 +140,68 @@ public class RoomService
             ? new Dictionary<string, string>()
             : JsonSerializer.Deserialize<Dictionary<string, string>>(room.PlayerColors) ?? new();
 
-        var notes = string.IsNullOrEmpty(room.Notes)
+        var initialBoard = JsonSerializer.Deserialize<int[][]>(puzzle.InitialBoard) ?? [];
+
+        // For competitive mode, return the player's own board and no solution
+        if (room.Mode == "Competitive")
+        {
+            int[][] currentBoard = initialBoard;
+            Dictionary<string, int[]> notes = new();
+
+            if (!string.IsNullOrEmpty(playerName))
+            {
+                var compBoard = await conn.QuerySingleOrDefaultAsync<CompetitiveBoard>(
+                    "SELECT * FROM CompetitiveBoards WHERE RoomId = @RoomId AND PlayerName = @PlayerName",
+                    new { RoomId = room.Id, PlayerName = playerName });
+
+                if (compBoard != null)
+                {
+                    currentBoard = JsonSerializer.Deserialize<int[][]>(compBoard.CurrentBoard) ?? initialBoard;
+                    notes = string.IsNullOrEmpty(compBoard.Notes)
+                        ? new Dictionary<string, int[]>()
+                        : JsonSerializer.Deserialize<Dictionary<string, int[]>>(compBoard.Notes) ?? new();
+                }
+            }
+
+            // Get progress for all players
+            var progress = await GetProgressInternal(conn, room.Id, playerColors);
+
+            // Find winner
+            string? winner = null;
+            var completedPlayers = progress.Where(p => p.IsCompleted).OrderBy(p => p.CompletedAt).ToList();
+            if (completedPlayers.Any())
+            {
+                winner = completedPlayers.First().DisplayName;
+            }
+
+            return new RoomResponse
+            {
+                Code = room.Code,
+                Difficulty = room.Difficulty,
+                Status = room.Status,
+                HostName = room.HostName,
+                Mode = room.Mode,
+                InitialBoard = initialBoard,
+                CurrentBoard = currentBoard,
+                Solution = [], // Don't send solution in competitive mode
+                Members = members.Select(m => new MemberResponse
+                {
+                    DisplayName = m.DisplayName,
+                    Color = m.Color,
+                    JoinedAt = m.JoinedAt
+                }).ToList(),
+                PlayerColors = playerColors,
+                Notes = notes,
+                IsPublic = room.IsPublic,
+                CreatedAt = room.CreatedAt,
+                CompletedAt = room.CompletedAt,
+                Progress = progress,
+                Winner = winner
+            };
+        }
+
+        // Cooperative mode (unchanged)
+        var coopNotes = string.IsNullOrEmpty(room.Notes)
             ? new Dictionary<string, int[]>()
             : JsonSerializer.Deserialize<Dictionary<string, int[]>>(room.Notes) ?? new();
 
@@ -119,7 +211,8 @@ public class RoomService
             Difficulty = room.Difficulty,
             Status = room.Status,
             HostName = room.HostName,
-            InitialBoard = JsonSerializer.Deserialize<int[][]>(puzzle.InitialBoard) ?? [],
+            Mode = room.Mode,
+            InitialBoard = initialBoard,
             CurrentBoard = JsonSerializer.Deserialize<int[][]>(room.CurrentBoard ?? puzzle.InitialBoard) ?? [],
             Solution = JsonSerializer.Deserialize<int[][]>(puzzle.Solution) ?? [],
             Members = members.Select(m => new MemberResponse
@@ -129,7 +222,7 @@ public class RoomService
                 JoinedAt = m.JoinedAt
             }).ToList(),
             PlayerColors = playerColors,
-            Notes = notes,
+            Notes = coopNotes,
             IsPublic = room.IsPublic,
             CreatedAt = room.CreatedAt,
             CompletedAt = room.CompletedAt
@@ -152,7 +245,7 @@ public class RoomService
 
         if (existing != null)
         {
-            var roomResp = await GetRoom(code);
+            var roomResp = await GetRoom(code, request.DisplayName);
             return new JoinRoomResponse
             {
                 DisplayName = existing.DisplayName,
@@ -181,7 +274,15 @@ public class RoomService
             "UPDATE Rooms SET PlayerColors = @PlayerColors WHERE Id = @Id",
             new { PlayerColors = JsonSerializer.Serialize(playerColors), room.Id });
 
-        var roomResponse = await GetRoom(code);
+        // If competitive, create a competitive board for this player
+        if (room.Mode == "Competitive")
+        {
+            var puzzle = await conn.QuerySingleAsync<SudokuPuzzle>(
+                "SELECT * FROM SudokuPuzzles WHERE Id = @Id", new { Id = room.PuzzleId });
+            await CreateCompetitiveBoard(conn, room.Id, request.DisplayName, puzzle.InitialBoard);
+        }
+
+        var roomResponse = await GetRoom(code, request.DisplayName);
         return new JoinRoomResponse
         {
             DisplayName = request.DisplayName,
@@ -244,6 +345,219 @@ public class RoomService
         return isComplete;
     }
 
+    public async Task<(bool isComplete, int filledCount, int rank)> CompetitivePlaceNumber(string code, string playerName, int row, int col, int value)
+    {
+        using var conn = GetConnection();
+        await conn.OpenAsync();
+
+        var room = await conn.QuerySingleOrDefaultAsync<Room>(
+            "SELECT * FROM Rooms WHERE Code = @Code", new { Code = code });
+        if (room == null || room.Status != "Active") return (false, 0, 0);
+
+        var puzzle = await conn.QuerySingleAsync<SudokuPuzzle>(
+            "SELECT * FROM SudokuPuzzles WHERE Id = @Id", new { Id = room.PuzzleId });
+
+        var initialBoard = JsonSerializer.Deserialize<int[][]>(puzzle.InitialBoard)!;
+        if (initialBoard[row][col] != 0) return (false, 0, 0);
+
+        var compBoard = await conn.QuerySingleOrDefaultAsync<CompetitiveBoard>(
+            "SELECT * FROM CompetitiveBoards WHERE RoomId = @RoomId AND PlayerName = @PlayerName",
+            new { RoomId = room.Id, PlayerName = playerName });
+        if (compBoard == null || compBoard.CompletedAt != null) return (false, 0, 0);
+
+        var currentBoard = JsonSerializer.Deserialize<int[][]>(compBoard.CurrentBoard)!;
+        currentBoard[row][col] = value;
+
+        // Clear notes for this cell
+        var notesDict = string.IsNullOrEmpty(compBoard.Notes)
+            ? new Dictionary<string, int[]>()
+            : JsonSerializer.Deserialize<Dictionary<string, int[]>>(compBoard.Notes) ?? new();
+        notesDict.Remove($"{row},{col}");
+
+        // Count filled cells (non-zero)
+        int filledCount = 0;
+        for (int r = 0; r < 9; r++)
+            for (int c = 0; c < 9; c++)
+                if (currentBoard[r][c] != 0) filledCount++;
+
+        // Check if puzzle is complete (matches solution)
+        var solution = JsonSerializer.Deserialize<int[][]>(puzzle.Solution)!;
+        bool isComplete = true;
+        for (int r = 0; r < 9 && isComplete; r++)
+            for (int c = 0; c < 9 && isComplete; c++)
+                if (currentBoard[r][c] != solution[r][c])
+                    isComplete = false;
+
+        var boardJson = JsonSerializer.Serialize(currentBoard);
+        var notesJson = JsonSerializer.Serialize(notesDict);
+
+        int rank = 0;
+        if (isComplete)
+        {
+            // Determine rank
+            var completedCount = await conn.QuerySingleAsync<int>(
+                "SELECT COUNT(*) FROM CompetitiveBoards WHERE RoomId = @RoomId AND CompletedAt IS NOT NULL",
+                new { RoomId = room.Id });
+            rank = completedCount + 1;
+
+            await conn.ExecuteAsync(@"
+                UPDATE CompetitiveBoards 
+                SET CurrentBoard = @Board, Notes = @Notes, FilledCount = @FilledCount, CompletedAt = GETUTCDATE() 
+                WHERE Id = @Id",
+                new { Board = boardJson, Notes = notesJson, FilledCount = filledCount, compBoard.Id });
+
+            // Check if all players have completed
+            var totalPlayers = await conn.QuerySingleAsync<int>(
+                "SELECT COUNT(*) FROM CompetitiveBoards WHERE RoomId = @RoomId",
+                new { RoomId = room.Id });
+            if (completedCount + 1 >= totalPlayers)
+            {
+                await conn.ExecuteAsync(
+                    "UPDATE Rooms SET Status = 'Completed', CompletedAt = GETUTCDATE() WHERE Id = @Id",
+                    new { room.Id });
+            }
+        }
+        else
+        {
+            await conn.ExecuteAsync(@"
+                UPDATE CompetitiveBoards 
+                SET CurrentBoard = @Board, Notes = @Notes, FilledCount = @FilledCount 
+                WHERE Id = @Id",
+                new { Board = boardJson, Notes = notesJson, FilledCount = filledCount, compBoard.Id });
+        }
+
+        return (isComplete, filledCount, rank);
+    }
+
+    public async Task<int> CompetitiveEraseNumber(string code, string playerName, int row, int col)
+    {
+        using var conn = GetConnection();
+        await conn.OpenAsync();
+
+        var room = await conn.QuerySingleOrDefaultAsync<Room>(
+            "SELECT * FROM Rooms WHERE Code = @Code", new { Code = code });
+        if (room == null || room.Status != "Active") return 0;
+
+        var puzzle = await conn.QuerySingleAsync<SudokuPuzzle>(
+            "SELECT * FROM SudokuPuzzles WHERE Id = @Id", new { Id = room.PuzzleId });
+
+        var initialBoard = JsonSerializer.Deserialize<int[][]>(puzzle.InitialBoard)!;
+        if (initialBoard[row][col] != 0) return 0;
+
+        var compBoard = await conn.QuerySingleOrDefaultAsync<CompetitiveBoard>(
+            "SELECT * FROM CompetitiveBoards WHERE RoomId = @RoomId AND PlayerName = @PlayerName",
+            new { RoomId = room.Id, PlayerName = playerName });
+        if (compBoard == null || compBoard.CompletedAt != null) return 0;
+
+        var currentBoard = JsonSerializer.Deserialize<int[][]>(compBoard.CurrentBoard)!;
+        currentBoard[row][col] = 0;
+
+        // Count filled cells
+        int filledCount = 0;
+        for (int r = 0; r < 9; r++)
+            for (int c = 0; c < 9; c++)
+                if (currentBoard[r][c] != 0) filledCount++;
+
+        var boardJson = JsonSerializer.Serialize(currentBoard);
+
+        await conn.ExecuteAsync(@"
+            UPDATE CompetitiveBoards 
+            SET CurrentBoard = @Board, FilledCount = @FilledCount 
+            WHERE Id = @Id",
+            new { Board = boardJson, FilledCount = filledCount, compBoard.Id });
+
+        return filledCount;
+    }
+
+    public async Task CompetitiveToggleNote(string code, string playerName, int row, int col, int value)
+    {
+        using var conn = GetConnection();
+        await conn.OpenAsync();
+
+        var room = await conn.QuerySingleOrDefaultAsync<Room>(
+            "SELECT * FROM Rooms WHERE Code = @Code", new { Code = code });
+        if (room == null || room.Status != "Active") return;
+
+        var compBoard = await conn.QuerySingleOrDefaultAsync<CompetitiveBoard>(
+            "SELECT * FROM CompetitiveBoards WHERE RoomId = @RoomId AND PlayerName = @PlayerName",
+            new { RoomId = room.Id, PlayerName = playerName });
+        if (compBoard == null || compBoard.CompletedAt != null) return;
+
+        var notesDict = string.IsNullOrEmpty(compBoard.Notes)
+            ? new Dictionary<string, int[]>()
+            : JsonSerializer.Deserialize<Dictionary<string, int[]>>(compBoard.Notes) ?? new();
+
+        var cellKey = $"{row},{col}";
+        var cellNotes = notesDict.ContainsKey(cellKey) ? new HashSet<int>(notesDict[cellKey]) : new HashSet<int>();
+
+        if (cellNotes.Contains(value))
+            cellNotes.Remove(value);
+        else
+            cellNotes.Add(value);
+
+        if (cellNotes.Count > 0)
+            notesDict[cellKey] = cellNotes.OrderBy(n => n).ToArray();
+        else
+            notesDict.Remove(cellKey);
+
+        await conn.ExecuteAsync(
+            "UPDATE CompetitiveBoards SET Notes = @Notes WHERE Id = @Id",
+            new { Notes = JsonSerializer.Serialize(notesDict), compBoard.Id });
+    }
+
+    public async Task<string?> GetRoomMode(string code)
+    {
+        using var conn = GetConnection();
+        await conn.OpenAsync();
+
+        var room = await conn.QuerySingleOrDefaultAsync<Room>(
+            "SELECT * FROM Rooms WHERE Code = @Code", new { Code = code });
+        return room?.Mode;
+    }
+
+    private async Task<List<PlayerProgress>> GetProgressInternal(SqlConnection conn, int roomId, Dictionary<string, string> playerColors)
+    {
+        var boards = (await conn.QueryAsync<CompetitiveBoard>(
+            "SELECT * FROM CompetitiveBoards WHERE RoomId = @RoomId",
+            new { RoomId = roomId })).ToList();
+
+        var completedBoards = boards.Where(b => b.CompletedAt != null).OrderBy(b => b.CompletedAt).ToList();
+
+        return boards.Select(b =>
+        {
+            var rank = b.CompletedAt != null
+                ? completedBoards.FindIndex(cb => cb.PlayerName == b.PlayerName) + 1
+                : (int?)null;
+
+            return new PlayerProgress
+            {
+                DisplayName = b.PlayerName,
+                Color = playerColors.GetValueOrDefault(b.PlayerName, "#3B82F6"),
+                FilledCount = b.FilledCount,
+                TotalCells = 81,
+                IsCompleted = b.CompletedAt != null,
+                CompletedAt = b.CompletedAt,
+                Rank = rank
+            };
+        }).ToList();
+    }
+
+    public async Task<List<PlayerProgress>> GetProgress(string code)
+    {
+        using var conn = GetConnection();
+        await conn.OpenAsync();
+
+        var room = await conn.QuerySingleOrDefaultAsync<Room>(
+            "SELECT * FROM Rooms WHERE Code = @Code", new { Code = code });
+        if (room == null) return [];
+
+        var playerColors = string.IsNullOrEmpty(room.PlayerColors)
+            ? new Dictionary<string, string>()
+            : JsonSerializer.Deserialize<Dictionary<string, string>>(room.PlayerColors) ?? new();
+
+        return await GetProgressInternal(conn, room.Id, playerColors);
+    }
+
     public async Task<List<PublicRoomResponse>> ListPublicRooms()
     {
         using var conn = GetConnection();
@@ -262,6 +576,7 @@ public class RoomService
                 Code = room.Code,
                 Difficulty = room.Difficulty,
                 HostName = room.HostName,
+                Mode = room.Mode,
                 PlayerCount = memberCount,
                 CreatedAt = room.CreatedAt
             });

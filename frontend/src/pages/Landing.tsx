@@ -11,6 +11,7 @@ interface PublicRoom {
   code: string;
   difficulty: string;
   hostName: string;
+  mode: string;
   playerCount: number;
   createdAt: string;
 }
@@ -19,6 +20,7 @@ export default function Landing() {
   const navigate = useNavigate();
   const [hostName, setHostName] = useState('');
   const [difficulty, setDifficulty] = useState('Medium');
+  const [mode, setMode] = useState('Cooperative');
   const [isPublic, setIsPublic] = useState(false);
   const [joinCode, setJoinCode] = useState('');
   const [joinName, setJoinName] = useState('');
@@ -48,6 +50,7 @@ export default function Landing() {
         difficulty,
         hostName: hostName.trim(),
         isPublic,
+        mode,
       });
       localStorage.setItem('sudoku_name', hostName.trim());
       navigate(`/room/${resp.code}`);
@@ -87,7 +90,7 @@ export default function Landing() {
           <h1 className="text-5xl font-bold text-white mb-3">
             <span className="text-blue-400">Sudoku</span> Together
           </h1>
-          <p className="text-gray-400 text-lg">Solve puzzles cooperatively with friends in real-time</p>
+          <p className="text-gray-400 text-lg">Solve puzzles with friends — cooperate or compete in real-time</p>
         </div>
 
         {error && (
@@ -131,6 +134,31 @@ export default function Landing() {
                       }`}
                     >
                       {d}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Mode</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { value: 'Cooperative', label: '🤝 Co-op', desc: 'Solve together' },
+                    { value: 'Competitive', label: '⚔️ Race', desc: 'First to finish' },
+                  ].map((m) => (
+                    <button
+                      key={m.value}
+                      type="button"
+                      onClick={() => setMode(m.value)}
+                      className={`py-2.5 px-3 rounded-lg text-sm font-medium transition-all flex flex-col items-center ${
+                        mode === m.value
+                          ? m.value === 'Cooperative'
+                            ? 'bg-blue-600 text-white ring-2 ring-blue-400'
+                            : 'bg-orange-600 text-white ring-2 ring-orange-400'
+                          : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                      }`}
+                    >
+                      <span>{m.label}</span>
+                      <span className="text-[10px] opacity-70 mt-0.5">{m.desc}</span>
                     </button>
                   ))}
                 </div>
@@ -229,6 +257,13 @@ export default function Landing() {
                       <span className="font-mono text-lg font-bold text-blue-400">{room.code}</span>
                       <span className={`text-xs font-medium px-2 py-0.5 rounded ${diffColor}`}>
                         {room.difficulty}
+                      </span>
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded ${
+                        room.mode === 'Competitive'
+                          ? 'text-orange-400 bg-orange-900/30'
+                          : 'text-blue-400 bg-blue-900/30'
+                      }`}>
+                        {room.mode === 'Competitive' ? '⚔️ Race' : '🤝 Co-op'}
                       </span>
                       <span className="text-gray-400 text-sm">
                         by {room.hostName || 'Anonymous'}

@@ -12,11 +12,22 @@ interface Member {
   joinedAt: string;
 }
 
+export interface PlayerProgress {
+  displayName: string;
+  color: string;
+  filledCount: number;
+  totalCells: number;
+  isCompleted: boolean;
+  completedAt: string | null;
+  rank: number | null;
+}
+
 interface RoomData {
   code: string;
   difficulty: string;
   status: string;
   hostName: string;
+  mode: string;
   initialBoard: number[][];
   currentBoard: number[][];
   solution: number[][];
@@ -25,6 +36,8 @@ interface RoomData {
   notes: Record<string, number[]>;
   createdAt: string;
   completedAt: string | null;
+  progress: PlayerProgress[] | null;
+  winner: string | null;
 }
 
 interface JoinResponse {
@@ -43,7 +56,10 @@ export default function GameRoom() {
   const [needsName, setNeedsName] = useState(false);
   const [nameInput, setNameInput] = useState('');
   const [error, setError] = useState('');
+  const [winner, setWinner] = useState<string | null>(null);
   const connRef = useRef<HubConnection | null>(null);
+
+  const isCompetitive = room?.mode === 'Competitive';
 
   const joinAndLoad = useCallback(
     async (displayName: string) => {
@@ -55,6 +71,7 @@ export default function GameRoom() {
         setMyName(resp.displayName);
         setMyColor(resp.color);
         setRoom(resp.room);
+        if (resp.room.winner) setWinner(resp.room.winner);
         localStorage.setItem('sudoku_name', displayName);
 
         // Connect SignalR
@@ -62,10 +79,10 @@ export default function GameRoom() {
         connRef.current = conn;
         await conn.invoke('JoinRoom', code, displayName);
 
-        // Listen for events
+        // === Cooperative mode events ===
         conn.on('NumberPlaced', (row: number, col: number, value: number, _player: string) => {
           setRoom((prev) => {
-            if (!prev) return prev;
+            if (!prev || prev.mode === 'Competitive') return prev;
             const newBoard = prev.currentBoard.map((r) => [...r]);
             newBoard[row][col] = value;
             const newNotes = { ...prev.notes };
@@ -76,29 +93,16 @@ export default function GameRoom() {
 
         conn.on('NumberErased', (row: number, col: number, _player: string) => {
           setRoom((prev) => {
-            if (!prev) return prev;
+            if (!prev || prev.mode === 'Competitive') return prev;
             const newBoard = prev.currentBoard.map((r) => [...r]);
             newBoard[row][col] = 0;
             return { ...prev, currentBoard: newBoard };
           });
         });
 
-        conn.on('PlayerJoined', (_playerName: string) => {
-          // Refresh room data to get updated member list
-          api.get<RoomData>(`/rooms/${code}`).then((r) => {
-            setRoom((prev) => (prev ? { ...prev, members: r.members, playerColors: r.playerColors } : prev));
-          });
-        });
-
-        conn.on('PlayerLeft', (_playerName: string) => {
-          api.get<RoomData>(`/rooms/${code}`).then((r) => {
-            setRoom((prev) => (prev ? { ...prev, members: r.members } : prev));
-          });
-        });
-
         conn.on('NoteUpdated', (row: number, col: number, updatedNotes: number[], _player: string) => {
           setRoom((prev) => {
-            if (!prev) return prev;
+            if (!prev || prev.mode === 'Competitive') return prev;
             const newNotes = { ...prev.notes };
             if (updatedNotes.length > 0) {
               newNotes[`${row},${col}`] = updatedNotes;
@@ -111,6 +115,54 @@ export default function GameRoom() {
 
         conn.on('PuzzleCompleted', () => {
           setRoom((prev) => (prev ? { ...prev, status: 'Completed' } : prev));
+        });
+
+        // === Competitive mode events ===
+        conn.on('ProgressUpdated', (playerName: string, filledCount: number) => {
+          setRoom((prev) => {
+            if (!prev || !prev.progress) return prev;
+            const newProgress = prev.progress.map((p) =>
+              p.displayName === playerName ? { ...p, filledCount } : p
+            );
+            return { ...prev, progress: newProgress };
+          });
+        });
+
+        conn.on('PlayerFinished', (playerName: string, rank: number) => {
+          setRoom((prev) => {
+            if (!prev || !prev.progress) return prev;
+            const newProgress = prev.progress.map((p) =>
+              p.displayName === playerName
+                ? { ...p, isCompleted: true, rank, filledCount: 81 }
+                : p
+            );
+            return { ...prev, progress: newProgress };
+          });
+        });
+
+        conn.on('CompetitionWinner', (playerName: string) => {
+          setWinner(playerName);
+          setRoom((prev) => (prev ? { ...prev, winner: playerName } : prev));
+        });
+
+        // === Shared events ===
+        conn.on('PlayerJoined', (_playerName: string) => {
+          // Refresh room data to get updated member list
+          const savedName = localStorage.getItem('sudoku_name');
+          api.get<RoomData>(`/rooms/${code}${savedName ? `?player=${encodeURIComponent(savedName)}` : ''}`).then((r) => {
+            setRoom((prev) =>
+              prev
+                ? { ...prev, members: r.members, playerColors: r.playerColors, progress: r.progress }
+                : prev
+            );
+          });
+        });
+
+        conn.on('PlayerLeft', (_playerName: string) => {
+          const savedName = localStorage.getItem('sudoku_name');
+          api.get<RoomData>(`/rooms/${code}${savedName ? `?player=${encodeURIComponent(savedName)}` : ''}`).then((r) => {
+            setRoom((prev) => (prev ? { ...prev, members: r.members } : prev));
+          });
         });
 
         setLoading(false);
@@ -162,7 +214,9 @@ export default function GameRoom() {
         if (!prev) return prev;
         const newBoard = prev.currentBoard.map((r) => [...r]);
         newBoard[row][col] = value;
-        return { ...prev, currentBoard: newBoard };
+        const newNotes = { ...prev.notes };
+        delete newNotes[`${row},${col}`];
+        return { ...prev, currentBoard: newBoard, notes: newNotes };
       });
     },
     [code, myName]
@@ -272,7 +326,11 @@ export default function GameRoom() {
     );
   }
 
-  const isCompleted = room.status === 'Completed';
+  const isCompleted = room.status === 'Completed' || (isCompetitive && winner !== null);
+
+  // In competitive mode, you're "done" if YOU finished (but game continues for others)
+  const myProgress = room.progress?.find((p) => p.displayName === myName);
+  const myBoardCompleted = isCompetitive && myProgress?.isCompleted;
 
   return (
     <div className="min-h-screen bg-gray-900">
@@ -287,6 +345,11 @@ export default function GameRoom() {
           </button>
           <h1 className="text-white font-bold text-lg">
             <span className="text-blue-400">Sudoku</span> Together
+            {isCompetitive && (
+              <span className="ml-2 text-xs font-medium px-2 py-0.5 rounded bg-orange-900/30 text-orange-400">
+                ⚔️ Race
+              </span>
+            )}
           </h1>
           <div className="text-gray-500 text-sm">
             {myName && (
@@ -301,6 +364,19 @@ export default function GameRoom() {
           </div>
         </div>
       </header>
+
+      {/* Winner Banner */}
+      {isCompetitive && winner && (
+        <div className="bg-gradient-to-r from-yellow-900/50 via-amber-900/50 to-yellow-900/50 border-b border-yellow-700/50 px-4 py-3">
+          <div className="max-w-7xl mx-auto text-center">
+            <span className="text-2xl">🏆</span>
+            <span className="text-yellow-300 font-bold text-lg ml-2">
+              {winner === myName ? 'You won!' : `${winner} wins!`}
+            </span>
+            <span className="text-2xl ml-1">🏆</span>
+          </div>
+        </div>
+      )}
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 py-8">
@@ -317,18 +393,21 @@ export default function GameRoom() {
               onEraseNumber={handleEraseNumber}
               onToggleNote={handleToggleNote}
               notes={room.notes || {}}
-              isCompleted={isCompleted}
+              isCompleted={isCompetitive ? (myBoardCompleted ?? false) : isCompleted}
             />
           </div>
 
           {/* Sidebar */}
-          <div className="w-full lg:w-64 flex-shrink-0">
+          <div className="w-full lg:w-72 flex-shrink-0">
             <PlayerList
               players={room.members}
               currentPlayer={myName}
               roomCode={room.code}
               difficulty={room.difficulty}
               isCompleted={isCompleted}
+              mode={room.mode}
+              progress={room.progress || undefined}
+              winner={winner || undefined}
             />
           </div>
         </div>
