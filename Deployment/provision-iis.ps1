@@ -114,28 +114,36 @@ try {
 Write-Host "`n>> Granting database access to IIS App Pool..." -ForegroundColor Yellow
 
 $appPoolLogin = "IIS APPPOOL\$SiteName"
-$sqlGrant = @"
+
+# Step 1: Create server-level login
+$sqlLogin = @"
 IF NOT EXISTS (SELECT * FROM sys.server_principals WHERE name = N'$appPoolLogin')
 BEGIN
     CREATE LOGIN [$appPoolLogin] FROM WINDOWS;
     PRINT 'LOGIN_CREATED';
 END
 ELSE
-BEGIN
     PRINT 'LOGIN_EXISTS';
-END
+"@
 
-USE [$DatabaseName];
+try {
+    $result = sqlcmd -S $SqlServerInstance -Q $sqlLogin -h -1 -W 2>&1
+    $resultText = ($result | Out-String).Trim()
+    Write-Host "   Login: $resultText" -ForegroundColor Green
+} catch {
+    Write-Host "   ERROR creating login: $_" -ForegroundColor Red
+    throw
+}
 
+# Step 2: Create database user and grant roles (using -d to target the database)
+$sqlUser = @"
 IF NOT EXISTS (SELECT * FROM sys.database_principals WHERE name = N'$appPoolLogin')
 BEGIN
     CREATE USER [$appPoolLogin] FOR LOGIN [$appPoolLogin];
     PRINT 'USER_CREATED';
 END
 ELSE
-BEGIN
     PRINT 'USER_EXISTS';
-END
 
 ALTER ROLE db_datareader ADD MEMBER [$appPoolLogin];
 ALTER ROLE db_datawriter ADD MEMBER [$appPoolLogin];
@@ -144,9 +152,9 @@ PRINT 'ROLES_GRANTED';
 "@
 
 try {
-    $result = sqlcmd -S $SqlServerInstance -Q $sqlGrant -h -1 -W 2>&1
+    $result = sqlcmd -S $SqlServerInstance -d $DatabaseName -Q $sqlUser -h -1 -W 2>&1
     $resultText = ($result | Out-String).Trim()
-    Write-Host "   $resultText" -ForegroundColor Green
+    Write-Host "   User/Roles: $resultText" -ForegroundColor Green
     $summary += "Granted DB access to $appPoolLogin"
 } catch {
     Write-Host "   ERROR granting DB access: $_" -ForegroundColor Red
