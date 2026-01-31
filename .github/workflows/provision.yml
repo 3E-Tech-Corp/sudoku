@@ -1,0 +1,195 @@
+name: Provision IIS Site
+
+on:
+  workflow_dispatch:
+    inputs:
+      site_name:
+        description: 'IIS Site Name (domain, e.g., myapp.3eweb.com)'
+        required: true
+        type: string
+      db_name:
+        description: 'Database name (e.g., my-project_DB)'
+        required: true
+        type: string
+      domain:
+        description: 'Domain for IIS bindings'
+        required: true
+        type: string
+      project_name:
+        description: 'Human-readable project name'
+        required: true
+        type: string
+
+jobs:
+  provision:
+    name: Provision IIS + Database
+    runs-on: self-hosted
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run provisioning script
+        shell: powershell
+        run: |
+          .\Deployment\provision-iis.ps1 `
+            -SiteName "${{ github.event.inputs.site_name }}" `
+            -Domain "${{ github.event.inputs.domain }}" `
+            -DatabaseName "${{ github.event.inputs.db_name }}" `
+            -ProjectName "${{ github.event.inputs.project_name }}"
+
+      - name: Build and deploy backend
+        shell: powershell
+        run: |
+          $siteName = "${{ github.event.inputs.site_name }}"
+          $backendPath = "F:\New_WWW\$siteName\API"
+
+          Write-Host ">> Building backend..." -ForegroundColor Yellow
+          dotnet publish backend\ProjectTemplate.Api\ProjectTemplate.Api.csproj `
+            --configuration Release `
+            --output .\publish\backend
+
+          Write-Host ">> Deploying backend to $backendPath ..." -ForegroundColor Yellow
+          # Preserve appsettings.Production.json during copy
+          $preserveFiles = @("appsettings.Production.json")
+          $tempDir = Join-Path $env:TEMP "provision-preserve-$(Get-Random)"
+          New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+
+          foreach ($file in $preserveFiles) {
+            $src = Join-Path $backendPath $file
+            if (Test-Path $src) {
+              Copy-Item $src (Join-Path $tempDir $file)
+            }
+          }
+
+          Copy-Item -Path ".\publish\backend\*" -Destination $backendPath -Recurse -Force
+
+          foreach ($file in $preserveFiles) {
+            $src = Join-Path $tempDir $file
+            if (Test-Path $src) {
+              Copy-Item $src (Join-Path $backendPath $file) -Force
+            }
+          }
+
+          Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+          Write-Host "   Backend deployed" -ForegroundColor Green
+
+      - name: Build and deploy frontend
+        shell: powershell
+        run: |
+          $siteName = "${{ github.event.inputs.site_name }}"
+          $frontendPath = "F:\New_WWW\$siteName\WWW"
+
+          Write-Host ">> Building frontend..." -ForegroundColor Yellow
+          Push-Location frontend
+          npm ci
+          npm run build
+          Pop-Location
+
+          Write-Host ">> Deploying frontend to $frontendPath ..." -ForegroundColor Yellow
+          Copy-Item -Path "frontend\dist\*" -Destination $frontendPath -Recurse -Force
+          Write-Host "   Frontend deployed" -ForegroundColor Green
+
+      - name: Restart App Pool
+        shell: powershell
+        run: |
+          Import-Module WebAdministration
+          $appPool = "${{ github.event.inputs.site_name }}"
+          Write-Host ">> Restarting app pool: $appPool" -ForegroundColor Yellow
+          if ((Get-WebAppPoolState -Name $appPool).Value -eq "Started") {
+            Restart-WebAppPool -Name $appPool
+          } else {
+            Start-WebAppPool -Name $appPool
+          }
+          Write-Host "   App pool restarted" -ForegroundColor Green
+
+      - name: Health check
+        shell: powershell
+        run: |
+          $domain = "${{ github.event.inputs.domain }}"
+          Write-Host ">> Waiting for site to start..." -ForegroundColor Yellow
+          Start-Sleep -Seconds 8
+
+          $maxRetries = 5
+          $retryDelay = 5
+          $healthy = $false
+
+          for ($i = 1; $i -le $maxRetries; $i++) {
+            try {
+              $response = Invoke-WebRequest -Uri "http://localhost/api/health" `
+                -Headers @{ Host = $domain } `
+                -UseBasicParsing -TimeoutSec 15
+              if ($response.StatusCode -eq 200) {
+                Write-Host "   Health check passed! (attempt $i)" -ForegroundColor Green
+                Write-Host "   Response: $($response.Content)" -ForegroundColor Gray
+                $healthy = $true
+                break
+              }
+            } catch {
+              Write-Host "   Attempt $i/$maxRetries failed: $_" -ForegroundColor Yellow
+              if ($i -lt $maxRetries) {
+                Start-Sleep -Seconds $retryDelay
+              }
+            }
+          }
+
+          if (!$healthy) {
+            Write-Host "   Health check did not pass after $maxRetries attempts (non-fatal)" -ForegroundColor Yellow
+            Write-Host "   The site may need DNS configuration or additional setup" -ForegroundColor Yellow
+          }
+
+      - name: Output summary
+        shell: powershell
+        run: |
+          $siteName = "${{ github.event.inputs.site_name }}"
+          $domain = "${{ github.event.inputs.domain }}"
+          $dbName = "${{ github.event.inputs.db_name }}"
+          $projectName = "${{ github.event.inputs.project_name }}"
+
+          Write-Host ""
+          Write-Host "==========================================================" -ForegroundColor Cyan
+          Write-Host " PROVISIONING COMPLETE" -ForegroundColor Green
+          Write-Host "==========================================================" -ForegroundColor Cyan
+          Write-Host ""
+          Write-Host " Project:    $projectName"
+          Write-Host " Site:       $siteName"
+          Write-Host " Domain:     $domain"
+          Write-Host " Database:   $dbName"
+          Write-Host " Frontend:   F:\New_WWW\$siteName\WWW"
+          Write-Host " Backend:    F:\New_WWW\$siteName\API"
+          Write-Host ""
+          Write-Host " URLs:"
+          Write-Host "   http://$domain"
+          Write-Host "   http://$domain/api/health"
+          Write-Host "   https://$domain (if SSL configured)"
+          Write-Host ""
+          Write-Host " Next steps:"
+          Write-Host "   1. Configure DNS A record for $domain → server IP"
+          Write-Host "   2. Verify SSL certificate binding (if needed)"
+          Write-Host "   3. Use Deploy workflow for future deployments"
+          Write-Host "==========================================================" -ForegroundColor Cyan
+
+          # GitHub Actions Job Summary
+          $summaryContent = @"
+          ## ✅ Provisioning Complete
+
+          | Property | Value |
+          |----------|-------|
+          | **Project** | $projectName |
+          | **Site** | $siteName |
+          | **Domain** | $domain |
+          | **Database** | $dbName |
+          | **Frontend** | ``F:\New_WWW\$siteName\WWW`` |
+          | **Backend** | ``F:\New_WWW\$siteName\API`` |
+
+          ### URLs
+          - http://$domain
+          - http://$domain/api/health
+          - https://$domain *(if SSL configured)*
+
+          ### Next Steps
+          1. Configure DNS A record for ``$domain``
+          2. Verify SSL certificate binding
+          3. Use **Deploy** workflow for future deployments
+          "@
+
+          $summaryContent | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding UTF8 -Append

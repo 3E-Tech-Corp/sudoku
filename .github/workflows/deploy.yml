@@ -1,0 +1,87 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      site_name:
+        description: 'IIS Site Name (overrides repo variable)'
+        required: false
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build Backend
+        run: dotnet publish --configuration Release --output ./publish
+        working-directory: backend/ProjectTemplate.Api
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build Frontend
+        run: |
+          npm ci
+          npm run build
+        working-directory: frontend
+
+      - name: Upload Backend Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend
+          path: backend/ProjectTemplate.Api/publish/
+
+      - name: Upload Frontend Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend
+          path: frontend/dist/
+
+      - name: Upload Deploy Scripts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment
+          path: Deployment/
+
+  deploy:
+    needs: build
+    runs-on: self-hosted
+    env:
+      SITE_NAME: ${{ github.event.inputs.site_name || vars.IIS_SITE_NAME }}
+    steps:
+      - name: Download Backend Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: backend
+          path: artifacts/backend
+
+      - name: Download Frontend Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend
+          path: artifacts/frontend
+
+      - name: Download Deploy Scripts
+        uses: actions/download-artifact@v4
+        with:
+          name: deployment
+          path: artifacts/deployment
+
+      - name: Deploy to IIS
+        shell: powershell
+        run: |
+          .\artifacts\deployment\deploy-iis.ps1 `
+            -SiteName "${{ env.SITE_NAME }}" `
+            -BackendSource "artifacts\backend" `
+            -FrontendSource "artifacts\frontend"
