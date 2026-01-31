@@ -21,6 +21,13 @@ export default function SudokuBoard({
 }: SudokuBoardProps) {
   const [selectedCell, setSelectedCell] = useState<{ row: number; col: number } | null>(null);
   const [highlightNum, setHighlightNum] = useState<number | null>(null);
+  const [notesMode, setNotesMode] = useState(false);
+  // notes[row][col] = Set of pencil mark numbers
+  const [notes, setNotes] = useState<Set<number>[][]>(() =>
+    Array.from({ length: 9 }, () =>
+      Array.from({ length: 9 }, () => new Set<number>())
+    )
+  );
 
   const isGiven = useCallback(
     (row: number, col: number) => initialBoard[row]?.[col] !== 0,
@@ -32,15 +39,12 @@ export default function SudokuBoard({
       const val = currentBoard[row]?.[col];
       if (!val || val === 0) return false;
 
-      // Check row
       for (let c = 0; c < 9; c++) {
         if (c !== col && currentBoard[row][c] === val) return true;
       }
-      // Check column
       for (let r = 0; r < 9; r++) {
         if (r !== row && currentBoard[r][col] === val) return true;
       }
-      // Check 3x3 box
       const boxRow = Math.floor(row / 3) * 3;
       const boxCol = Math.floor(col / 3) * 3;
       for (let r = boxRow; r < boxRow + 3; r++) {
@@ -80,26 +84,92 @@ export default function SudokuBoard({
     setHighlightNum(val && val !== 0 ? val : null);
   };
 
-  const handleNumberInput = (num: number) => {
-    if (!selectedCell || isCompleted) return;
-    const { row, col } = selectedCell;
-    if (isGiven(row, col)) return;
-    onPlaceNumber(row, col, num);
-    setHighlightNum(num);
-  };
+  const toggleNote = useCallback(
+    (row: number, col: number, num: number) => {
+      setNotes((prev) => {
+        const newNotes = prev.map((r) => r.map((s) => new Set(s)));
+        if (newNotes[row][col].has(num)) {
+          newNotes[row][col].delete(num);
+        } else {
+          newNotes[row][col].add(num);
+        }
+        return newNotes;
+      });
+    },
+    []
+  );
 
-  const handleErase = () => {
+  const clearNotes = useCallback(
+    (row: number, col: number) => {
+      setNotes((prev) => {
+        const newNotes = prev.map((r) => r.map((s) => new Set(s)));
+        newNotes[row][col].clear();
+        return newNotes;
+      });
+    },
+    []
+  );
+
+  const handleNumberInput = useCallback(
+    (num: number) => {
+      if (!selectedCell || isCompleted) return;
+      const { row, col } = selectedCell;
+      if (isGiven(row, col)) return;
+
+      if (notesMode) {
+        // In notes mode, toggle the pencil mark
+        toggleNote(row, col, num);
+      } else {
+        // In normal mode, place the number and clear notes
+        clearNotes(row, col);
+        onPlaceNumber(row, col, num);
+        setHighlightNum(num);
+      }
+    },
+    [selectedCell, isCompleted, isGiven, notesMode, toggleNote, clearNotes, onPlaceNumber]
+  );
+
+  const handleErase = useCallback(() => {
     if (!selectedCell || isCompleted) return;
     const { row, col } = selectedCell;
     if (isGiven(row, col)) return;
-    onEraseNumber(row, col);
-    setHighlightNum(null);
-  };
+
+    // If cell has a value, erase it
+    const val = currentBoard[row]?.[col];
+    if (val && val !== 0) {
+      onEraseNumber(row, col);
+      setHighlightNum(null);
+    } else {
+      // If cell is empty, clear notes
+      clearNotes(row, col);
+    }
+  }, [selectedCell, isCompleted, isGiven, currentBoard, onEraseNumber, clearNotes]);
+
+  // Clear notes when a number is placed (by anyone via SignalR)
+  useEffect(() => {
+    for (let r = 0; r < 9; r++) {
+      for (let c = 0; c < 9; c++) {
+        if (currentBoard[r]?.[c] !== 0 && notes[r][c].size > 0) {
+          clearNotes(r, c);
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentBoard]);
 
   // Keyboard support
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (!selectedCell || isCompleted) return;
+      if (isCompleted) return;
+
+      // Toggle notes mode with 'n' key
+      if (e.key === 'n' || e.key === 'N') {
+        setNotesMode((prev) => !prev);
+        return;
+      }
+
+      if (!selectedCell) return;
+
       const num = parseInt(e.key);
       if (num >= 1 && num <= 9) {
         handleNumberInput(num);
@@ -117,8 +187,7 @@ export default function SudokuBoard({
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCell, isCompleted]);
+  }, [selectedCell, isCompleted, handleNumberInput, handleErase]);
 
   // Count remaining for each number
   const numberCounts = Array(10).fill(0);
@@ -130,7 +199,7 @@ export default function SudokuBoard({
   }
 
   return (
-    <div className="flex flex-col items-center gap-6">
+    <div className="flex flex-col items-center gap-4">
       {/* Board */}
       <div className="inline-grid grid-cols-9 border-2 border-gray-300 bg-gray-800 select-none">
         {Array.from({ length: 9 }, (_, row) =>
@@ -141,8 +210,8 @@ export default function SudokuBoard({
             const sameGroup = isInSameGroup(row, col);
             const error = !given && hasError(row, col);
             const sameNum = highlightNum && value === highlightNum && value !== 0;
+            const cellNotes = notes[row]?.[col];
 
-            // Border classes for 3x3 boxes
             const borderRight = col % 3 === 2 && col !== 8 ? 'border-r-2 border-r-gray-400' : 'border-r border-r-gray-700';
             const borderBottom = row % 3 === 2 && row !== 8 ? 'border-b-2 border-b-gray-400' : 'border-b border-b-gray-700';
 
@@ -165,7 +234,7 @@ export default function SudokuBoard({
                 key={`${row}-${col}`}
                 onClick={() => handleCellClick(row, col)}
                 className={`
-                  w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center
+                  w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center relative
                   text-lg sm:text-xl transition-colors duration-100
                   ${borderRight} ${borderBottom} ${bgClass} ${textClass}
                   hover:bg-blue-800/40 focus:outline-none
@@ -176,42 +245,81 @@ export default function SudokuBoard({
                     : undefined
                 }
               >
-                {value !== 0 ? value : ''}
+                {value !== 0 ? (
+                  value
+                ) : cellNotes && cellNotes.size > 0 ? (
+                  <div className="grid grid-cols-3 grid-rows-3 w-full h-full p-px">
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
+                      <span
+                        key={n}
+                        className={`flex items-center justify-center text-[8px] sm:text-[9px] leading-none ${
+                          cellNotes.has(n)
+                            ? highlightNum === n
+                              ? 'text-blue-300 font-bold'
+                              : 'text-gray-400'
+                            : 'text-transparent'
+                        }`}
+                      >
+                        {n}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  ''
+                )}
               </button>
             );
           })
         )}
       </div>
 
-      {/* Number Pad */}
-      <div className="flex flex-wrap justify-center gap-2">
-        {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => {
-          const remaining = 9 - numberCounts[num];
-          return (
-            <button
-              key={num}
-              onClick={() => handleNumberInput(num)}
-              disabled={isCompleted || remaining <= 0}
-              className={`
-                w-12 h-14 sm:w-14 sm:h-16 rounded-lg text-xl font-bold
-                transition-all flex flex-col items-center justify-center
-                ${remaining <= 0
-                  ? 'bg-gray-700 text-gray-600 cursor-not-allowed'
-                  : 'bg-gray-700 text-white hover:bg-blue-600 active:bg-blue-700'}
-              `}
-            >
-              <span>{num}</span>
-              <span className="text-[10px] text-gray-400 font-normal">{remaining}</span>
-            </button>
-          );
-        })}
+      {/* Notes mode toggle + Number Pad */}
+      <div className="flex flex-col items-center gap-3">
+        {/* Notes toggle */}
         <button
-          onClick={handleErase}
-          disabled={isCompleted}
-          className="w-12 h-14 sm:w-14 sm:h-16 rounded-lg text-sm font-medium bg-gray-700 text-red-400 hover:bg-red-900/50 active:bg-red-900 transition-all"
+          onClick={() => setNotesMode(!notesMode)}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+            notesMode
+              ? 'bg-amber-600 text-white ring-2 ring-amber-400'
+              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+          }`}
         >
-          Erase
+          ✏️ Notes {notesMode ? 'ON' : 'OFF'}
+          <span className="text-xs opacity-60">(N)</span>
         </button>
+
+        {/* Number Pad */}
+        <div className="flex flex-wrap justify-center gap-2">
+          {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => {
+            const remaining = 9 - numberCounts[num];
+            return (
+              <button
+                key={num}
+                onClick={() => handleNumberInput(num)}
+                disabled={isCompleted || (!notesMode && remaining <= 0)}
+                className={`
+                  w-12 h-14 sm:w-14 sm:h-16 rounded-lg text-xl font-bold
+                  transition-all flex flex-col items-center justify-center
+                  ${!notesMode && remaining <= 0
+                    ? 'bg-gray-700 text-gray-600 cursor-not-allowed'
+                    : notesMode
+                    ? 'bg-gray-700 text-amber-400 hover:bg-amber-900/50 active:bg-amber-900 border border-amber-700/50'
+                    : 'bg-gray-700 text-white hover:bg-blue-600 active:bg-blue-700'}
+                `}
+              >
+                <span>{num}</span>
+                {!notesMode && <span className="text-[10px] text-gray-400 font-normal">{remaining}</span>}
+              </button>
+            );
+          })}
+          <button
+            onClick={handleErase}
+            disabled={isCompleted}
+            className="w-12 h-14 sm:w-14 sm:h-16 rounded-lg text-sm font-medium bg-gray-700 text-red-400 hover:bg-red-900/50 active:bg-red-900 transition-all"
+          >
+            Erase
+          </button>
+        </div>
       </div>
     </div>
   );
