@@ -99,6 +99,8 @@ try {
     $resultText = ($result | Out-String).Trim()
     if ($resultText -match "DATABASE_CREATED") {
         Write-Host "   Database created: $DatabaseName" -ForegroundColor Green
+        Write-Host "   Waiting for database to come online..." -ForegroundColor Yellow
+        Start-Sleep -Seconds 5
         $summary += "Created database: $DatabaseName"
     } elseif ($resultText -match "DATABASE_EXISTS") {
         Write-Host "   Database already exists: $DatabaseName" -ForegroundColor Gray
