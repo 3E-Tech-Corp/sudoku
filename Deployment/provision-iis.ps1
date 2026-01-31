@@ -79,52 +79,35 @@ foreach ($dir in @($frontendPath, $backendPath, $logsPath, $backupPath)) {
     }
 }
 
-# - 2. Create SQL Server Database -----------------------
-Write-Host "`n>> Creating database: $DatabaseName ..." -ForegroundColor Yellow
+# - 2. Create Database + Grant IIS App Pool access -----------------------
+Write-Host "`n>> Setting up database and permissions..." -ForegroundColor Yellow
 
-$sqlCheck = @"
+$appPoolLogin = "IIS APPPOOL\$SiteName"
+
+# Single SQL file with GO separators for proper batch execution
+$sqlSetup = @"
+-- Batch 1: Create database
 IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = N'$DatabaseName')
 BEGIN
     CREATE DATABASE [$DatabaseName];
     PRINT 'DATABASE_CREATED';
 END
 ELSE
-BEGIN
     PRINT 'DATABASE_EXISTS';
-END
-"@
+GO
 
-try {
-    $result = sqlcmd -S $SqlServerInstance -Q $sqlCheck -h -1 -W 2>&1
-    $resultText = ($result | Out-String).Trim()
-    if ($resultText -match "DATABASE_CREATED") {
-        Write-Host "   Database created: $DatabaseName" -ForegroundColor Green
-        Write-Host "   Waiting for database to come online..." -ForegroundColor Yellow
-        Start-Sleep -Seconds 5
-        $summary += "Created database: $DatabaseName"
-    } elseif ($resultText -match "DATABASE_EXISTS") {
-        Write-Host "   Database already exists: $DatabaseName" -ForegroundColor Gray
-    } else {
-        Write-Host "   sqlcmd output: $resultText" -ForegroundColor Yellow
-    }
-} catch {
-    Write-Host "   ERROR creating database: $_" -ForegroundColor Red
-    throw
-}
+-- Batch 2: Wait for DB to come online
+WAITFOR DELAY '00:00:03';
+PRINT 'WAITED';
+GO
 
-# - 2b. Grant IIS App Pool access to database -----------------------
-Write-Host "`n>> Granting database access to IIS App Pool..." -ForegroundColor Yellow
-
-$appPoolLogin = "IIS APPPOOL\$SiteName"
-
-# Create Windows login for IIS app pool and grant DB access
-$sqlLogin = @"
+-- Batch 3: Create login
 IF NOT EXISTS (SELECT * FROM sys.server_principals WHERE name = N'$appPoolLogin')
     CREATE LOGIN [$appPoolLogin] FROM WINDOWS;
 PRINT 'LOGIN_OK';
-"@
+GO
 
-$sqlDbUser = @"
+-- Batch 4: Create user and grant roles
 USE [$DatabaseName];
 IF NOT EXISTS (SELECT * FROM sys.database_principals WHERE name = N'$appPoolLogin')
     CREATE USER [$appPoolLogin] FOR LOGIN [$appPoolLogin];
@@ -132,19 +115,23 @@ ALTER ROLE db_datareader ADD MEMBER [$appPoolLogin];
 ALTER ROLE db_datawriter ADD MEMBER [$appPoolLogin];
 ALTER ROLE db_ddladmin ADD MEMBER [$appPoolLogin];
 PRINT 'ACCESS_GRANTED';
+GO
 "@
 
+$sqlFile = Join-Path $env:TEMP "db-setup-$(Get-Random).sql"
+$sqlSetup | Set-Content -Path $sqlFile -Encoding UTF8
+
 try {
-    $result1 = sqlcmd -S $SqlServerInstance -Q $sqlLogin -h -1 -W 2>&1
-    Write-Host "   Login: $(($result1 | Out-String).Trim())" -ForegroundColor Green
-
-    $result2 = sqlcmd -S $SqlServerInstance -Q $sqlDbUser -h -1 -W 2>&1
-    Write-Host "   DB User: $(($result2 | Out-String).Trim())" -ForegroundColor Green
-
+    $result = sqlcmd -S $SqlServerInstance -i $sqlFile -h -1 -W 2>&1
+    $resultText = ($result | Out-String).Trim()
+    Write-Host "   $resultText" -ForegroundColor Green
+    $summary += "Database setup complete"
     $summary += "Granted DB access to $appPoolLogin"
 } catch {
-    Write-Host "   ERROR granting DB access: $_" -ForegroundColor Red
+    Write-Host "   ERROR in database setup: $_" -ForegroundColor Red
     throw
+} finally {
+    Remove-Item $sqlFile -ErrorAction SilentlyContinue
 }
 
 # - 3. Generate appsettings.Production.json ------------------
