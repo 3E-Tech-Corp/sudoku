@@ -19,8 +19,10 @@ export default function PlayerList({
   difficulty,
   isCompleted,
 }: PlayerListProps) {
-  const copyCode = () => {
-    navigator.clipboard.writeText(roomCode);
+  const shareLink = `${window.location.origin}/room/${roomCode}`;
+
+  const copyLink = () => {
+    navigator.clipboard.writeText(shareLink);
   };
 
   const difficultyColor =
@@ -36,13 +38,6 @@ export default function PlayerList({
       <div className="mb-6">
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider">Room Code</h3>
-          <button
-            onClick={copyCode}
-            className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
-            title="Copy invite code"
-          >
-            Copy
-          </button>
         </div>
         <div className="font-mono text-3xl font-bold text-white tracking-widest text-center py-2">
           {roomCode}
@@ -50,6 +45,12 @@ export default function PlayerList({
         <div className="text-center mt-1">
           <span className={`text-sm font-medium ${difficultyColor}`}>{difficulty}</span>
         </div>
+        <button
+          onClick={copyLink}
+          className="mt-3 w-full py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
+        >
+          📋 Copy Invite Link
+        </button>
       </div>
 
       {isCompleted && (
@@ -89,7 +90,7 @@ export default function PlayerList({
       {/* Share */}
       <div className="mt-6 pt-4 border-t border-gray-700">
         <p className="text-gray-500 text-xs text-center">
-          Share the room code with friends to play together!
+          Share the invite link with friends to play together!
         </p>
       </div>
     </div>
