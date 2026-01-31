@@ -22,6 +22,13 @@ public class RoomsController : ControllerBase
         return Ok(result);
     }
 
+    [HttpGet("public")]
+    public async Task<IActionResult> ListPublicRooms()
+    {
+        var rooms = await _roomService.ListPublicRooms();
+        return Ok(rooms);
+    }
+
     [HttpGet("{code}")]
     public async Task<IActionResult> GetRoom(string code)
     {

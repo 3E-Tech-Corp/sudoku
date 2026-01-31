@@ -20,6 +20,7 @@ public class Room
     public string? CurrentBoard { get; set; }
     public string? PlayerColors { get; set; }
     public string? Notes { get; set; }
+    public bool IsPublic { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
 }
@@ -39,6 +40,7 @@ public class CreateRoomRequest
 {
     public string Difficulty { get; set; } = "Medium";
     public string HostName { get; set; } = "Host";
+    public bool IsPublic { get; set; } = false;
 }
 
 public class JoinRoomRequest
@@ -64,8 +66,18 @@ public class RoomResponse
     public List<MemberResponse> Members { get; set; } = [];
     public Dictionary<string, string> PlayerColors { get; set; } = [];
     public Dictionary<string, int[]> Notes { get; set; } = [];
+    public bool IsPublic { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
+}
+
+public class PublicRoomResponse
+{
+    public string Code { get; set; } = "";
+    public string Difficulty { get; set; } = "";
+    public string? HostName { get; set; }
+    public int PlayerCount { get; set; }
+    public DateTime CreatedAt { get; set; }
 }
 
 public class MemberResponse

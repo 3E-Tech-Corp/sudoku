@@ -63,8 +63,8 @@ public class RoomService
         }
 
         await conn.ExecuteAsync(@"
-            INSERT INTO Rooms (Code, PuzzleId, HostName, Difficulty, Status, CurrentBoard, PlayerColors)
-            VALUES (@Code, @PuzzleId, @HostName, @Difficulty, 'Active', @CurrentBoard, @PlayerColors)",
+            INSERT INTO Rooms (Code, PuzzleId, HostName, Difficulty, Status, CurrentBoard, PlayerColors, IsPublic)
+            VALUES (@Code, @PuzzleId, @HostName, @Difficulty, 'Active', @CurrentBoard, @PlayerColors, @IsPublic)",
             new
             {
                 Code = code,
@@ -72,7 +72,8 @@ public class RoomService
                 request.HostName,
                 request.Difficulty,
                 CurrentBoard = puzzleJson,
-                PlayerColors = JsonSerializer.Serialize(initialColors)
+                PlayerColors = JsonSerializer.Serialize(initialColors),
+                request.IsPublic
             });
 
         // Add host as member if name provided
@@ -129,6 +130,7 @@ public class RoomService
             }).ToList(),
             PlayerColors = playerColors,
             Notes = notes,
+            IsPublic = room.IsPublic,
             CreatedAt = room.CreatedAt,
             CompletedAt = room.CompletedAt
         };
@@ -240,6 +242,31 @@ public class RoomService
         }
 
         return isComplete;
+    }
+
+    public async Task<List<PublicRoomResponse>> ListPublicRooms()
+    {
+        using var conn = GetConnection();
+        await conn.OpenAsync();
+
+        var rooms = await conn.QueryAsync<Room>(
+            "SELECT * FROM Rooms WHERE IsPublic = 1 AND Status = 'Active' ORDER BY CreatedAt DESC");
+
+        var result = new List<PublicRoomResponse>();
+        foreach (var room in rooms)
+        {
+            var memberCount = await conn.QuerySingleAsync<int>(
+                "SELECT COUNT(*) FROM RoomMembers WHERE RoomId = @RoomId", new { RoomId = room.Id });
+            result.Add(new PublicRoomResponse
+            {
+                Code = room.Code,
+                Difficulty = room.Difficulty,
+                HostName = room.HostName,
+                PlayerCount = memberCount,
+                CreatedAt = room.CreatedAt
+            });
+        }
+        return result;
     }
 
     public async Task<int[]> ToggleNote(string code, int row, int col, int value)

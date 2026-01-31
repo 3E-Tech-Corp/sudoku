@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 
@@ -7,15 +7,33 @@ interface CreateRoomResponse {
   difficulty: string;
 }
 
+interface PublicRoom {
+  code: string;
+  difficulty: string;
+  hostName: string;
+  playerCount: number;
+  createdAt: string;
+}
+
 export default function Landing() {
   const navigate = useNavigate();
   const [hostName, setHostName] = useState('');
   const [difficulty, setDifficulty] = useState('Medium');
+  const [isPublic, setIsPublic] = useState(false);
   const [joinCode, setJoinCode] = useState('');
   const [joinName, setJoinName] = useState('');
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState('');
+  const [publicRooms, setPublicRooms] = useState<PublicRoom[]>([]);
+  const [loadingRooms, setLoadingRooms] = useState(true);
+
+  useEffect(() => {
+    api.get<PublicRoom[]>('/rooms/public')
+      .then(setPublicRooms)
+      .catch(() => {})
+      .finally(() => setLoadingRooms(false));
+  }, []);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,6 +47,7 @@ export default function Landing() {
       const resp = await api.post<CreateRoomResponse>('/rooms', {
         difficulty,
         hostName: hostName.trim(),
+        isPublic,
       });
       localStorage.setItem('sudoku_name', hostName.trim());
       navigate(`/room/${resp.code}`);
@@ -116,6 +135,22 @@ export default function Landing() {
                   ))}
                 </div>
               </div>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsPublic(!isPublic)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                    isPublic ? 'bg-blue-600' : 'bg-gray-600'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      isPublic ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+                <span className="text-sm text-gray-300">Public room</span>
+              </div>
               <button
                 type="submit"
                 disabled={creating}
@@ -162,6 +197,53 @@ export default function Landing() {
             </form>
           </div>
         </div>
+
+        {/* Public Rooms */}
+        {!loadingRooms && publicRooms.length > 0 && (
+          <div className="max-w-3xl mx-auto mt-12">
+            <h2 className="text-xl font-bold text-white mb-4 text-center">🌐 Public Rooms</h2>
+            <div className="grid gap-3">
+              {publicRooms.map((room) => {
+                const diffColor =
+                  room.difficulty === 'Easy'
+                    ? 'text-green-400 bg-green-900/30'
+                    : room.difficulty === 'Hard'
+                    ? 'text-red-400 bg-red-900/30'
+                    : 'text-yellow-400 bg-yellow-900/30';
+                return (
+                  <button
+                    key={room.code}
+                    onClick={() => {
+                      const name = localStorage.getItem('sudoku_name');
+                      if (name) {
+                        navigate(`/room/${room.code}`);
+                      } else {
+                        setJoinCode(room.code);
+                        // Scroll to join form
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }
+                    }}
+                    className="bg-gray-800 border border-gray-700 rounded-xl p-4 flex items-center justify-between hover:border-blue-500/50 hover:bg-gray-750 transition-all text-left"
+                  >
+                    <div className="flex items-center gap-4">
+                      <span className="font-mono text-lg font-bold text-blue-400">{room.code}</span>
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded ${diffColor}`}>
+                        {room.difficulty}
+                      </span>
+                      <span className="text-gray-400 text-sm">
+                        by {room.hostName || 'Anonymous'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-gray-400">
+                      <span className="text-sm">👥 {room.playerCount}</span>
+                      <span className="text-blue-400 text-sm font-medium">Join →</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <p className="text-center text-gray-500 text-sm mt-10">
           No account needed. Just create or join a room and start solving!

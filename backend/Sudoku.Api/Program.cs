@@ -170,6 +170,11 @@ using (var scope = app.Services.CreateScope())
                 IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Rooms') AND name = 'Notes')
                     ALTER TABLE Rooms ADD Notes NVARCHAR(MAX) NULL;");
 
+            // Add IsPublic column to Rooms if missing
+            await conn.ExecuteAsync(@"
+                IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Rooms') AND name = 'IsPublic')
+                    ALTER TABLE Rooms ADD IsPublic BIT NOT NULL DEFAULT 0;");
+
             app.Logger.LogInformation("Database migration completed successfully");
         }
         catch (Exception ex)
