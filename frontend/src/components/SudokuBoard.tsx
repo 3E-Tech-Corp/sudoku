@@ -8,6 +8,8 @@ interface SudokuBoardProps {
   myColor: string;
   onPlaceNumber: (row: number, col: number, value: number) => void;
   onEraseNumber: (row: number, col: number) => void;
+  onToggleNote: (row: number, col: number, value: number) => void;
+  notes: Record<string, number[]>;
   isCompleted: boolean;
 }
 
@@ -17,17 +19,13 @@ export default function SudokuBoard({
   myColor,
   onPlaceNumber,
   onEraseNumber,
+  onToggleNote,
+  notes,
   isCompleted,
 }: SudokuBoardProps) {
   const [selectedCell, setSelectedCell] = useState<{ row: number; col: number } | null>(null);
   const [highlightNum, setHighlightNum] = useState<number | null>(null);
   const [notesMode, setNotesMode] = useState(false);
-  // notes[row][col] = Set of pencil mark numbers
-  const [notes, setNotes] = useState<Set<number>[][]>(() =>
-    Array.from({ length: 9 }, () =>
-      Array.from({ length: 9 }, () => new Set<number>())
-    )
-  );
 
   const isGiven = useCallback(
     (row: number, col: number) => initialBoard[row]?.[col] !== 0,
@@ -84,32 +82,6 @@ export default function SudokuBoard({
     setHighlightNum(val && val !== 0 ? val : null);
   };
 
-  const toggleNote = useCallback(
-    (row: number, col: number, num: number) => {
-      setNotes((prev) => {
-        const newNotes = prev.map((r) => r.map((s) => new Set(s)));
-        if (newNotes[row][col].has(num)) {
-          newNotes[row][col].delete(num);
-        } else {
-          newNotes[row][col].add(num);
-        }
-        return newNotes;
-      });
-    },
-    []
-  );
-
-  const clearNotes = useCallback(
-    (row: number, col: number) => {
-      setNotes((prev) => {
-        const newNotes = prev.map((r) => r.map((s) => new Set(s)));
-        newNotes[row][col].clear();
-        return newNotes;
-      });
-    },
-    []
-  );
-
   const handleNumberInput = useCallback(
     (num: number) => {
       if (!selectedCell || isCompleted) return;
@@ -117,16 +89,13 @@ export default function SudokuBoard({
       if (isGiven(row, col)) return;
 
       if (notesMode) {
-        // In notes mode, toggle the pencil mark
-        toggleNote(row, col, num);
+        onToggleNote(row, col, num);
       } else {
-        // In normal mode, place the number and clear notes
-        clearNotes(row, col);
         onPlaceNumber(row, col, num);
         setHighlightNum(num);
       }
     },
-    [selectedCell, isCompleted, isGiven, notesMode, toggleNote, clearNotes, onPlaceNumber]
+    [selectedCell, isCompleted, isGiven, notesMode, onToggleNote, onPlaceNumber]
   );
 
   const handleErase = useCallback(() => {
@@ -134,28 +103,12 @@ export default function SudokuBoard({
     const { row, col } = selectedCell;
     if (isGiven(row, col)) return;
 
-    // If cell has a value, erase it
     const val = currentBoard[row]?.[col];
     if (val && val !== 0) {
       onEraseNumber(row, col);
       setHighlightNum(null);
-    } else {
-      // If cell is empty, clear notes
-      clearNotes(row, col);
     }
-  }, [selectedCell, isCompleted, isGiven, currentBoard, onEraseNumber, clearNotes]);
-
-  // Clear notes when a number is placed (by anyone via SignalR)
-  useEffect(() => {
-    for (let r = 0; r < 9; r++) {
-      for (let c = 0; c < 9; c++) {
-        if (currentBoard[r]?.[c] !== 0 && notes[r][c].size > 0) {
-          clearNotes(r, c);
-        }
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentBoard]);
+  }, [selectedCell, isCompleted, isGiven, currentBoard, onEraseNumber]);
 
   // Keyboard support
   useEffect(() => {
@@ -210,7 +163,8 @@ export default function SudokuBoard({
             const sameGroup = isInSameGroup(row, col);
             const error = !given && hasError(row, col);
             const sameNum = highlightNum && value === highlightNum && value !== 0;
-            const cellNotes = notes[row]?.[col];
+            const cellNotesArr = notes[`${row},${col}`] || [];
+            const cellNotesSet = new Set(cellNotesArr);
 
             const borderRight = col % 3 === 2 && col !== 8 ? 'border-r-2 border-r-gray-400' : 'border-r border-r-gray-700';
             const borderBottom = row % 3 === 2 && row !== 8 ? 'border-b-2 border-b-gray-400' : 'border-b border-b-gray-700';
@@ -247,13 +201,13 @@ export default function SudokuBoard({
               >
                 {value !== 0 ? (
                   value
-                ) : cellNotes && cellNotes.size > 0 ? (
+                ) : cellNotesArr.length > 0 ? (
                   <div className="grid grid-cols-3 grid-rows-3 w-full h-full p-px">
                     {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
                       <span
                         key={n}
                         className={`flex items-center justify-center text-[8px] sm:text-[9px] leading-none ${
-                          cellNotes.has(n)
+                          cellNotesSet.has(n)
                             ? highlightNum === n
                               ? 'text-blue-300 font-bold'
                               : 'text-gray-400'

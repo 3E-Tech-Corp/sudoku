@@ -108,6 +108,10 @@ public class RoomService
             ? new Dictionary<string, string>()
             : JsonSerializer.Deserialize<Dictionary<string, string>>(room.PlayerColors) ?? new();
 
+        var notes = string.IsNullOrEmpty(room.Notes)
+            ? new Dictionary<string, int[]>()
+            : JsonSerializer.Deserialize<Dictionary<string, int[]>>(room.Notes) ?? new();
+
         return new RoomResponse
         {
             Code = room.Code,
@@ -124,6 +128,7 @@ public class RoomService
                 JoinedAt = m.JoinedAt
             }).ToList(),
             PlayerColors = playerColors,
+            Notes = notes,
             CreatedAt = room.CreatedAt,
             CompletedAt = room.CompletedAt
         };
@@ -203,7 +208,15 @@ public class RoomService
         var currentBoard = JsonSerializer.Deserialize<int[][]>(room.CurrentBoard ?? puzzle.InitialBoard)!;
         currentBoard[row][col] = value;
 
+        // Clear notes for this cell when a number is placed
+        var notesDict = string.IsNullOrEmpty(room.Notes)
+            ? new Dictionary<string, int[]>()
+            : JsonSerializer.Deserialize<Dictionary<string, int[]>>(room.Notes) ?? new();
+        var cellKey = $"{row},{col}";
+        notesDict.Remove(cellKey);
+
         var boardJson = JsonSerializer.Serialize(currentBoard);
+        var notesJson = JsonSerializer.Serialize(notesDict);
 
         // Check if puzzle is complete
         var solution = JsonSerializer.Deserialize<int[][]>(puzzle.Solution)!;
@@ -216,17 +229,72 @@ public class RoomService
         if (isComplete)
         {
             await conn.ExecuteAsync(
-                "UPDATE Rooms SET CurrentBoard = @Board, Status = 'Completed', CompletedAt = GETUTCDATE() WHERE Id = @Id",
-                new { Board = boardJson, room.Id });
+                "UPDATE Rooms SET CurrentBoard = @Board, Notes = @Notes, Status = 'Completed', CompletedAt = GETUTCDATE() WHERE Id = @Id",
+                new { Board = boardJson, Notes = notesJson, room.Id });
         }
         else
         {
             await conn.ExecuteAsync(
-                "UPDATE Rooms SET CurrentBoard = @Board WHERE Id = @Id",
-                new { Board = boardJson, room.Id });
+                "UPDATE Rooms SET CurrentBoard = @Board, Notes = @Notes WHERE Id = @Id",
+                new { Board = boardJson, Notes = notesJson, room.Id });
         }
 
         return isComplete;
+    }
+
+    public async Task<int[]> ToggleNote(string code, int row, int col, int value)
+    {
+        using var conn = GetConnection();
+        await conn.OpenAsync();
+
+        var room = await conn.QuerySingleOrDefaultAsync<Room>(
+            "SELECT * FROM Rooms WHERE Code = @Code", new { Code = code });
+        if (room == null || room.Status != "Active") return [];
+
+        var notesDict = string.IsNullOrEmpty(room.Notes)
+            ? new Dictionary<string, int[]>()
+            : JsonSerializer.Deserialize<Dictionary<string, int[]>>(room.Notes) ?? new();
+
+        var cellKey = $"{row},{col}";
+        var cellNotes = notesDict.ContainsKey(cellKey) ? new HashSet<int>(notesDict[cellKey]) : new HashSet<int>();
+
+        if (cellNotes.Contains(value))
+            cellNotes.Remove(value);
+        else
+            cellNotes.Add(value);
+
+        if (cellNotes.Count > 0)
+            notesDict[cellKey] = cellNotes.OrderBy(n => n).ToArray();
+        else
+            notesDict.Remove(cellKey);
+
+        await conn.ExecuteAsync(
+            "UPDATE Rooms SET Notes = @Notes WHERE Id = @Id",
+            new { Notes = JsonSerializer.Serialize(notesDict), room.Id });
+
+        return cellNotes.OrderBy(n => n).ToArray();
+    }
+
+    public async Task ClearNotes(string code, int row, int col)
+    {
+        using var conn = GetConnection();
+        await conn.OpenAsync();
+
+        var room = await conn.QuerySingleOrDefaultAsync<Room>(
+            "SELECT * FROM Rooms WHERE Code = @Code", new { Code = code });
+        if (room == null) return;
+
+        var notesDict = string.IsNullOrEmpty(room.Notes)
+            ? new Dictionary<string, int[]>()
+            : JsonSerializer.Deserialize<Dictionary<string, int[]>>(room.Notes) ?? new();
+
+        var cellKey = $"{row},{col}";
+        if (notesDict.Remove(cellKey))
+        {
+            await conn.ExecuteAsync(
+                "UPDATE Rooms SET Notes = @Notes WHERE Id = @Id",
+                new { Notes = JsonSerializer.Serialize(notesDict), room.Id });
+        }
     }
 
     public async Task<bool> EraseNumber(string code, int row, int col)

@@ -43,4 +43,11 @@ public class SudokuHub : Hub
         await _roomService.EraseNumber(code, row, col);
         await Clients.Group(code).SendAsync("NumberErased", row, col, player);
     }
+
+    public async Task ToggleNote(string code, int row, int col, int value, string player)
+    {
+        code = code.ToUpper();
+        var updatedNotes = await _roomService.ToggleNote(code, row, col, value);
+        await Clients.Group(code).SendAsync("NoteUpdated", row, col, updatedNotes, player);
+    }
 }

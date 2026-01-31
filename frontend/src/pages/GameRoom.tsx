@@ -22,6 +22,7 @@ interface RoomData {
   solution: number[][];
   members: Member[];
   playerColors: Record<string, string>;
+  notes: Record<string, number[]>;
   createdAt: string;
   completedAt: string | null;
 }
@@ -67,7 +68,9 @@ export default function GameRoom() {
             if (!prev) return prev;
             const newBoard = prev.currentBoard.map((r) => [...r]);
             newBoard[row][col] = value;
-            return { ...prev, currentBoard: newBoard };
+            const newNotes = { ...prev.notes };
+            delete newNotes[`${row},${col}`];
+            return { ...prev, currentBoard: newBoard, notes: newNotes };
           });
         });
 
@@ -90,6 +93,19 @@ export default function GameRoom() {
         conn.on('PlayerLeft', (_playerName: string) => {
           api.get<RoomData>(`/rooms/${code}`).then((r) => {
             setRoom((prev) => (prev ? { ...prev, members: r.members } : prev));
+          });
+        });
+
+        conn.on('NoteUpdated', (row: number, col: number, updatedNotes: number[], _player: string) => {
+          setRoom((prev) => {
+            if (!prev) return prev;
+            const newNotes = { ...prev.notes };
+            if (updatedNotes.length > 0) {
+              newNotes[`${row},${col}`] = updatedNotes;
+            } else {
+              delete newNotes[`${row},${col}`];
+            }
+            return { ...prev, notes: newNotes };
           });
         });
 
@@ -147,6 +163,32 @@ export default function GameRoom() {
         const newBoard = prev.currentBoard.map((r) => [...r]);
         newBoard[row][col] = value;
         return { ...prev, currentBoard: newBoard };
+      });
+    },
+    [code, myName]
+  );
+
+  const handleToggleNote = useCallback(
+    (row: number, col: number, value: number) => {
+      if (!connRef.current || !code) return;
+      connRef.current.invoke('ToggleNote', code, row, col, value, myName);
+      // Optimistic update
+      setRoom((prev) => {
+        if (!prev) return prev;
+        const newNotes = { ...prev.notes };
+        const cellKey = `${row},${col}`;
+        const current = new Set(newNotes[cellKey] || []);
+        if (current.has(value)) {
+          current.delete(value);
+        } else {
+          current.add(value);
+        }
+        if (current.size > 0) {
+          newNotes[cellKey] = Array.from(current).sort();
+        } else {
+          delete newNotes[cellKey];
+        }
+        return { ...prev, notes: newNotes };
       });
     },
     [code, myName]
@@ -273,6 +315,8 @@ export default function GameRoom() {
               myColor={myColor}
               onPlaceNumber={handlePlaceNumber}
               onEraseNumber={handleEraseNumber}
+              onToggleNote={handleToggleNote}
+              notes={room.notes || {}}
               isCompleted={isCompleted}
             />
           </div>

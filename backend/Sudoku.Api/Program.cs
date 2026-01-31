@@ -165,6 +165,11 @@ using (var scope = app.Services.CreateScope())
                     );
                 END");
 
+            // Add Notes column to Rooms if missing
+            await conn.ExecuteAsync(@"
+                IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Rooms') AND name = 'Notes')
+                    ALTER TABLE Rooms ADD Notes NVARCHAR(MAX) NULL;");
+
             app.Logger.LogInformation("Database migration completed successfully");
         }
         catch (Exception ex)

@@ -19,6 +19,7 @@ public class Room
     public string Status { get; set; } = "Active";
     public string? CurrentBoard { get; set; }
     public string? PlayerColors { get; set; }
+    public string? Notes { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
 }
@@ -62,6 +63,7 @@ public class RoomResponse
     public int[][] Solution { get; set; } = [];
     public List<MemberResponse> Members { get; set; } = [];
     public Dictionary<string, string> PlayerColors { get; set; } = [];
+    public Dictionary<string, int[]> Notes { get; set; } = [];
     public DateTime CreatedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
 }
