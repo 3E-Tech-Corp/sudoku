@@ -6,7 +6,7 @@ export function getConnection(): signalR.HubConnection {
   if (!connection) {
     const baseUrl = window.location.origin;
     connection = new signalR.HubConnectionBuilder()
-      .withUrl(`${baseUrl}/hubs/sudoku`)
+      .withUrl(`${baseUrl}/api/hubs/sudoku`)
       .withAutomaticReconnect()
       .configureLogging(signalR.LogLevel.Information)
       .build();

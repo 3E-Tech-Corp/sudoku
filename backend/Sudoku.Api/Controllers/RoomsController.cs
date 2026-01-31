@@ -5,7 +5,7 @@ using Sudoku.Api.Services;
 namespace Sudoku.Api.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("[controller]")]
 public class RoomsController : ControllerBase
 {
     private readonly RoomService _roomService;
