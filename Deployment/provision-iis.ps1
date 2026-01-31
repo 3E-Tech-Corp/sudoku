@@ -110,6 +110,49 @@ try {
     throw
 }
 
+# - 2b. Grant IIS App Pool access to database -----------------------
+Write-Host "`n>> Granting database access to IIS App Pool..." -ForegroundColor Yellow
+
+$appPoolLogin = "IIS APPPOOL\$SiteName"
+$sqlGrant = @"
+IF NOT EXISTS (SELECT * FROM sys.server_principals WHERE name = N'$appPoolLogin')
+BEGIN
+    CREATE LOGIN [$appPoolLogin] FROM WINDOWS;
+    PRINT 'LOGIN_CREATED';
+END
+ELSE
+BEGIN
+    PRINT 'LOGIN_EXISTS';
+END
+
+USE [$DatabaseName];
+
+IF NOT EXISTS (SELECT * FROM sys.database_principals WHERE name = N'$appPoolLogin')
+BEGIN
+    CREATE USER [$appPoolLogin] FOR LOGIN [$appPoolLogin];
+    PRINT 'USER_CREATED';
+END
+ELSE
+BEGIN
+    PRINT 'USER_EXISTS';
+END
+
+ALTER ROLE db_datareader ADD MEMBER [$appPoolLogin];
+ALTER ROLE db_datawriter ADD MEMBER [$appPoolLogin];
+ALTER ROLE db_ddladmin ADD MEMBER [$appPoolLogin];
+PRINT 'ROLES_GRANTED';
+"@
+
+try {
+    $result = sqlcmd -S $SqlServerInstance -Q $sqlGrant -h -1 -W 2>&1
+    $resultText = ($result | Out-String).Trim()
+    Write-Host "   $resultText" -ForegroundColor Green
+    $summary += "Granted DB access to $appPoolLogin"
+} catch {
+    Write-Host "   ERROR granting DB access: $_" -ForegroundColor Red
+    throw
+}
+
 # - 3. Generate appsettings.Production.json ------------------
 Write-Host "`n>> Generating appsettings.Production.json ..." -ForegroundColor Yellow
 
