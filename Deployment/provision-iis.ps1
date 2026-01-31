@@ -115,57 +115,34 @@ Write-Host "`n>> Granting database access to IIS App Pool..." -ForegroundColor Y
 
 $appPoolLogin = "IIS APPPOOL\$SiteName"
 
-# Create a contained database user with SQL auth (avoids needing server-level securityadmin)
-$dbPassword = [System.Convert]::ToBase64String(
-    (1..24 | ForEach-Object { Get-Random -Maximum 256 }) -as [byte[]]
-) + "!Aa1"  # Ensure complexity requirements
-
-$sqlSetup = @"
--- Enable contained authentication at server level (requires no special perms if we're sysadmin of the DB)
-EXEC sp_configure 'contained database authentication', 1;
-RECONFIGURE;
+# Create Windows login for IIS app pool and grant DB access
+$sqlLogin = @"
+IF NOT EXISTS (SELECT * FROM sys.server_principals WHERE name = N'$appPoolLogin')
+    CREATE LOGIN [$appPoolLogin] FROM WINDOWS;
+PRINT 'LOGIN_OK';
 "@
 
-$sqlContained = @"
-ALTER DATABASE [$DatabaseName] SET CONTAINMENT = PARTIAL;
-"@
-
-$sqlUser = @"
+$sqlDbUser = @"
 USE [$DatabaseName];
-IF NOT EXISTS (SELECT * FROM sys.database_principals WHERE name = N'sudoku_app')
-BEGIN
-    CREATE USER [sudoku_app] WITH PASSWORD = N'$dbPassword';
-    PRINT 'USER_CREATED';
-END
-ELSE
-BEGIN
-    ALTER USER [sudoku_app] WITH PASSWORD = N'$dbPassword';
-    PRINT 'USER_UPDATED';
-END
-
-ALTER ROLE db_datareader ADD MEMBER [sudoku_app];
-ALTER ROLE db_datawriter ADD MEMBER [sudoku_app];
-ALTER ROLE db_ddladmin ADD MEMBER [sudoku_app];
+IF NOT EXISTS (SELECT * FROM sys.database_principals WHERE name = N'$appPoolLogin')
+    CREATE USER [$appPoolLogin] FOR LOGIN [$appPoolLogin];
+ALTER ROLE db_datareader ADD MEMBER [$appPoolLogin];
+ALTER ROLE db_datawriter ADD MEMBER [$appPoolLogin];
+ALTER ROLE db_ddladmin ADD MEMBER [$appPoolLogin];
 PRINT 'ACCESS_GRANTED';
 "@
 
 try {
-    # Enable contained auth
-    sqlcmd -S $SqlServerInstance -Q $sqlSetup -h -1 -W 2>&1 | Out-Null
-    sqlcmd -S $SqlServerInstance -Q $sqlContained -h -1 -W 2>&1 | Out-Null
+    $result1 = sqlcmd -S $SqlServerInstance -Q $sqlLogin -h -1 -W 2>&1
+    Write-Host "   Login: $(($result1 | Out-String).Trim())" -ForegroundColor Green
 
-    $result = sqlcmd -S $SqlServerInstance -Q $sqlUser -h -1 -W 2>&1
-    $resultText = ($result | Out-String).Trim()
-    Write-Host "   $resultText" -ForegroundColor Green
-    $summary += "Created contained DB user: sudoku_app"
+    $result2 = sqlcmd -S $SqlServerInstance -Q $sqlDbUser -h -1 -W 2>&1
+    Write-Host "   DB User: $(($result2 | Out-String).Trim())" -ForegroundColor Green
 
-    # Save password for connection string generation
-    $script:dbAppUser = "sudoku_app"
-    $script:dbAppPassword = $dbPassword
+    $summary += "Granted DB access to $appPoolLogin"
 } catch {
-    Write-Host "   WARNING: Could not create contained DB user: $_" -ForegroundColor Yellow
-    Write-Host "   Falling back to Trusted_Connection" -ForegroundColor Yellow
-    $script:dbAppUser = $null
+    Write-Host "   ERROR granting DB access: $_" -ForegroundColor Red
+    throw
 }
 
 # - 3. Generate appsettings.Production.json ------------------
@@ -179,11 +156,7 @@ if (!(Test-Path $appsettingsPath)) {
         (1..32 | ForEach-Object { Get-Random -Maximum 256 }) -as [byte[]]
     )
 
-    if ($script:dbAppUser) {
-        $connectionString = "Server=$SqlServerInstance;Database=$DatabaseName;User Id=$($script:dbAppUser);Password=$($script:dbAppPassword);TrustServerCertificate=True;MultipleActiveResultSets=True"
-    } else {
-        $connectionString = "Server=$SqlServerInstance;Database=$DatabaseName;Trusted_Connection=True;TrustServerCertificate=True;MultipleActiveResultSets=True"
-    }
+    $connectionString = "Server=$SqlServerInstance;Database=$DatabaseName;Trusted_Connection=True;TrustServerCertificate=True;MultipleActiveResultSets=True"
 
     $appsettings = @{
         ConnectionStrings = @{
@@ -211,16 +184,14 @@ if (!(Test-Path $appsettingsPath)) {
     $summary += "Created appsettings.Production.json"
 } else {
     Write-Host "   Exists:  $appsettingsPath" -ForegroundColor Gray
-    # Update connection string if we created a new DB user
-    if ($script:dbAppUser) {
-        $existing = Get-Content $appsettingsPath -Raw | ConvertFrom-Json
-        $newConnStr = "Server=$SqlServerInstance;Database=$DatabaseName;User Id=$($script:dbAppUser);Password=$($script:dbAppPassword);TrustServerCertificate=True;MultipleActiveResultSets=True"
-        if ($existing.ConnectionStrings.DefaultConnection -ne $newConnStr) {
-            $existing.ConnectionStrings.DefaultConnection = $newConnStr
-            $existing | ConvertTo-Json -Depth 5 | Set-Content -Path $appsettingsPath -Encoding UTF8
-            Write-Host "   Updated connection string to use SQL auth" -ForegroundColor Green
-            $summary += "Updated connection string"
-        }
+    # Ensure connection string uses Trusted_Connection (fix from prior SQL auth attempt)
+    $existing = Get-Content $appsettingsPath -Raw | ConvertFrom-Json
+    $expectedConnStr = "Server=$SqlServerInstance;Database=$DatabaseName;Trusted_Connection=True;TrustServerCertificate=True;MultipleActiveResultSets=True"
+    if ($existing.ConnectionStrings.DefaultConnection -ne $expectedConnStr) {
+        $existing.ConnectionStrings.DefaultConnection = $expectedConnStr
+        $existing | ConvertTo-Json -Depth 5 | Set-Content -Path $appsettingsPath -Encoding UTF8
+        Write-Host "   Updated connection string to Trusted_Connection" -ForegroundColor Green
+        $summary += "Updated connection string"
     }
 }
 
