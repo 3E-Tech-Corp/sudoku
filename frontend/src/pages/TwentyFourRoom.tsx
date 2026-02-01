@@ -5,9 +5,8 @@ import { startGameConnection, stopGameConnection } from '../services/signalr';
 import { sounds } from '../services/sounds';
 import VideoChat from '../components/VideoChat';
 import GameTimer from '../components/GameTimer';
-import DeckPicker from '../components/DeckPicker';
-import LayoutPicker, { getSavedLayout, saveLayout, type LayoutConfig } from '../components/LayoutPicker';
-import { getSavedThemeId, saveThemeId, getThemeById } from '../config/deckThemes';
+import RoomSettings, { getSavedVisuals, saveVisuals, getBackgroundClass, getFeltGradient, type RoomVisuals } from '../components/RoomSettings';
+import { getThemeById } from '../config/deckThemes';
 import confetti from 'canvas-confetti';
 import type { HubConnection } from '@microsoft/signalr';
 
@@ -386,19 +385,16 @@ export default function TwentyFourRoom() {
   const [error, setError] = useState('');
   const connRef = useRef<HubConnection | null>(null);
 
-  // Deck theme (persisted in localStorage via deckThemes helper)
-  const [themeId, setThemeId] = useState(getSavedThemeId);
-  const handleThemeChange = useCallback((id: string) => {
-    setThemeId(id);
-    saveThemeId(id);
+  // Unified room visuals (background, felt, layout, deck — persisted in localStorage)
+  const [visuals, setVisuals] = useState<RoomVisuals>(getSavedVisuals);
+  const handleVisualsChange = useCallback((v: RoomVisuals) => {
+    setVisuals(v);
+    saveVisuals(v);
   }, []);
 
-  // Board layout (persisted in localStorage)
-  const [layout, setLayout] = useState<LayoutConfig>(getSavedLayout);
-  const handleLayoutChange = useCallback((l: LayoutConfig) => {
-    setLayout(l);
-    saveLayout(l);
-  }, []);
+  // Derived values for convenience
+  const themeId = visuals.deckThemeId;
+  const layout = visuals;
 
   // Game state
   const [cards, setCards] = useState<TwentyFourCard[]>([]);
@@ -880,9 +876,9 @@ export default function TwentyFourRoom() {
   const usedSourceKeys = new Set(Object.values(placements));
 
   return (
-    <div className="min-h-screen bg-gray-900">
+    <div className={`min-h-screen transition-colors duration-500 ${getBackgroundClass(visuals.background)}`}>
       {/* Header */}
-      <header className="border-b border-gray-800 px-4 py-3">
+      <header className="border-b border-gray-800/50 px-4 py-3">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <button onClick={() => navigate('/games/24')} className="text-gray-400 hover:text-white transition-colors text-sm">
             &larr; Back
@@ -897,8 +893,7 @@ export default function TwentyFourRoom() {
             )}
           </h1>
           <div className="flex items-center gap-3">
-            <LayoutPicker layout={layout} onChange={handleLayoutChange} />
-            <DeckPicker currentThemeId={themeId} onChange={handleThemeChange} />
+            <RoomSettings visuals={visuals} onChange={handleVisualsChange} />
             <VideoChat connection={connRef.current} roomCode={code || ''} myName={myName} myColor={myColor} />
             <span className="text-gray-500 text-sm flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: myColor }} />
@@ -1023,9 +1018,10 @@ export default function TwentyFourRoom() {
                 </div>
               ) : null;
 
+              const feltGradient = getFeltGradient(visuals.feltColor);
               const feltStyle = {
-                background: 'radial-gradient(ellipse at center, #2d7a3a 0%, #1e6b2a 40%, #165a22 100%)',
-                backgroundImage: `radial-gradient(ellipse at center, #2d7a3a 0%, #1e6b2a 40%, #165a22 100%), url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.08'/%3E%3C/svg%3E")`,
+                background: feltGradient,
+                backgroundImage: `${feltGradient}, url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.08'/%3E%3C/svg%3E")`,
               };
 
               const feltOverlay = (
