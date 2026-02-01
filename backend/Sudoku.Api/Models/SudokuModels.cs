@@ -99,7 +99,7 @@ public class RoomResponse
     // TwentyFour-specific fields
     public TwentyFourGameState? TwentyFourState { get; set; }
     // Blackjack-specific fields
-    public BlackjackGameState? BlackjackState { get; set; }
+    public BlackjackStateResponse? BlackjackState { get; set; }
     // Chess-specific fields
     public ChessStateResponse? ChessState { get; set; }
 }

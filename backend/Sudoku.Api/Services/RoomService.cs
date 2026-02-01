@@ -227,6 +227,11 @@ public class RoomService
         if (room.GameType == "Blackjack")
         {
             var bjState = await _blackjackService.GetGameState(room.Id);
+            BlackjackStateResponse? bjResponse = null;
+            if (bjState != null)
+            {
+                bjResponse = _blackjackService.ToResponse(bjState);
+            }
             return new RoomResponse
             {
                 Code = room.Code,
@@ -246,7 +251,7 @@ public class RoomService
                 IsPublic = room.IsPublic,
                 CreatedAt = room.CreatedAt,
                 CompletedAt = room.CompletedAt,
-                BlackjackState = bjState
+                BlackjackState = bjResponse
             };
         }
 
