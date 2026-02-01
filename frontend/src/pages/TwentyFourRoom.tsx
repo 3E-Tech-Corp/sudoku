@@ -75,6 +75,27 @@ function emptyRow(): RowState {
 
 // ===== Card Visual Component =====
 
+// Map card data to SVG filenames from saulspatz/SVGCards deck
+function getCardImagePath(card: { number: number; suit: string }): string {
+  const suitMap: Record<string, string> = {
+    Hearts: 'heart',
+    Diamonds: 'diamond',
+    Clubs: 'club',
+    Spades: 'spade',
+  };
+  const suitPrefix = suitMap[card.suit];
+  if (!suitPrefix) return ''; // Results or unknown suit
+
+  const faceMap: Record<number, string> = {
+    1: 'Ace',
+    11: 'Jack',
+    12: 'Queen',
+    13: 'King',
+  };
+  const face = faceMap[card.number] ?? String(card.number);
+  return `/cards/${suitPrefix}${face}.svg`;
+}
+
 function PlayingCard({
   card,
   selected,
@@ -92,11 +113,15 @@ function PlayingCard({
   animDelay?: number;
   faceDown?: boolean;
 }) {
+  const isRealCard = card.suit === 'Hearts' || card.suit === 'Diamonds' || card.suit === 'Clubs' || card.suit === 'Spades';
+
+  // For result cards, keep showing the number + suit symbol
   const isRed = card.suit === 'Hearts' || card.suit === 'Diamonds';
   const suitSymbol =
     card.suit === 'Hearts' ? '♥' :
     card.suit === 'Diamonds' ? '♦' :
-    card.suit === 'Clubs' ? '♣' : '♠';
+    card.suit === 'Clubs' ? '♣' :
+    card.suit === 'Spades' ? '♠' : '★';
 
   const displayNum =
     card.number === 1 ? 'A' :
@@ -110,26 +135,44 @@ function PlayingCard({
       onClick={onClick}
       disabled={used || faceDown}
       className={`
-        relative w-16 h-24 sm:w-20 sm:h-28 rounded-xl border-2 transition-all duration-300 flex flex-col items-center justify-center
+        relative w-16 h-24 sm:w-20 sm:h-28 rounded-xl transition-all duration-300 overflow-hidden
         ${faceDown
-          ? 'bg-gradient-to-br from-blue-800 to-blue-900 border-blue-600 cursor-default'
+          ? 'cursor-default'
           : selected
-          ? 'bg-white border-yellow-400 shadow-[0_0_15px_rgba(250,204,21,0.5)] scale-105'
+          ? 'shadow-[0_0_15px_rgba(250,204,21,0.5)] scale-105 ring-2 ring-yellow-400'
           : used
-          ? 'bg-gray-700 border-gray-600 opacity-40 cursor-not-allowed'
+          ? 'opacity-40 cursor-not-allowed grayscale'
           : isResult
-          ? 'bg-gradient-to-b from-amber-50 to-amber-100 border-amber-400 hover:border-amber-300 hover:shadow-lg cursor-pointer'
-          : 'bg-white border-gray-300 hover:border-blue-400 hover:shadow-lg cursor-pointer active:scale-95'
+          ? 'border-2 border-amber-400 hover:border-amber-300 hover:shadow-lg cursor-pointer'
+          : 'hover:shadow-lg cursor-pointer active:scale-95 hover:ring-2 hover:ring-blue-400'
         }
       `}
       style={{ animationDelay: animDelay ? `${animDelay}ms` : undefined }}
     >
       {faceDown ? (
-        <div className="w-10 h-16 sm:w-12 sm:h-20 rounded-lg bg-gradient-to-br from-blue-600 to-purple-700 border border-blue-500/30 flex items-center justify-center">
-          <span className="text-2xl text-blue-300/50">🂠</span>
-        </div>
-      ) : (
+        <img
+          src="/cards/blueBack.svg"
+          alt="Card back"
+          className="w-full h-full object-fill rounded-xl"
+          draggable={false}
+        />
+      ) : isRealCard ? (
         <>
+          <img
+            src={getCardImagePath(card)}
+            alt={`${displayNum} of ${card.suit}`}
+            className="w-full h-full object-fill rounded-lg"
+            draggable={false}
+          />
+          {isResult && (
+            <div className="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 rounded-full flex items-center justify-center">
+              <span className="text-[8px] text-white font-bold">R</span>
+            </div>
+          )}
+        </>
+      ) : (
+        /* Result card (intermediate value) — styled display */
+        <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-amber-50 to-amber-100 rounded-xl border-0">
           <div className={`text-2xl sm:text-3xl font-bold ${isRed ? 'text-red-500' : 'text-gray-800'}`}>
             {displayNum}
           </div>
@@ -141,7 +184,7 @@ function PlayingCard({
               <span className="text-[8px] text-white font-bold">R</span>
             </div>
           )}
-        </>
+        </div>
       )}
     </button>
   );
