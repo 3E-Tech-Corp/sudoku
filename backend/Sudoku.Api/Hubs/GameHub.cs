@@ -262,10 +262,10 @@ public class GameHub : Hub
     /// <summary>
     /// Cooperative mode: broadcast card/operator placement in real-time
     /// </summary>
-    public async Task Place24Card(string code, string player, int row, int slot, int cardValue)
+    public async Task Place24Card(string code, string player, int row, int slot, int cardValue, string sourceKey)
     {
         code = code.ToUpper();
-        await Clients.OthersInGroup(code).SendAsync("24CardPlaced", player, row, slot, cardValue);
+        await Clients.OthersInGroup(code).SendAsync("24CardPlaced", player, row, slot, cardValue, sourceKey);
     }
 
     public async Task Place24Operator(string code, string player, int row, string op)
@@ -278,6 +278,15 @@ public class GameHub : Hub
     {
         code = code.ToUpper();
         await Clients.OthersInGroup(code).SendAsync("24Undo", player, row);
+    }
+
+    /// <summary>
+    /// Clear a single slot in cooperative mode (individual undo)
+    /// </summary>
+    public async Task Clear24Slot(string code, string player, int row, string slot, string sourceKey)
+    {
+        code = code.ToUpper();
+        await Clients.OthersInGroup(code).SendAsync("24SlotCleared", player, row, slot, sourceKey);
     }
 
     // Kept from original GameHub for backward compatibility

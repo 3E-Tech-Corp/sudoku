@@ -508,6 +508,69 @@ export default function TwentyFourRoom() {
         conn.on('24RowCompleted', (_player: string, row: number, card1: number, op: string, card2: number, result: number) => {
           setRows((prev) => { const n = [...prev]; n[row] = { card1, operator: op, card2, result, locked: true }; return n; });
           setResultCards((prev) => new Map(prev).set(row, result));
+          // Advance activeRow past any locked rows
+          setActiveRow((prev) => {
+            let next = prev;
+            while (next < 3) {
+              // We need to check the updated rows — but we only know this row was just locked
+              if (next === row) { next++; continue; }
+              break;
+            }
+            return Math.max(prev, row + 1);
+          });
+        });
+
+        // Granular co-op: partner placed a card into a slot
+        conn.on('24CardPlaced', (_player: string, row: number, slot: number, cardValue: number, sourceKey: string) => {
+          setRows((prev) => {
+            const n = [...prev];
+            const r = { ...n[row] };
+            if (slot === 0) r.card1 = cardValue;
+            else r.card2 = cardValue;
+            n[row] = r;
+            return n;
+          });
+          const slotName = slot === 0 ? 'card1' : 'card2';
+          setPlacements((prev) => ({ ...prev, [`${row}-${slotName}`]: sourceKey }));
+        });
+
+        // Granular co-op: partner placed an operator
+        conn.on('24OperatorPlaced', (_player: string, row: number, op: string) => {
+          setRows((prev) => {
+            const n = [...prev];
+            n[row] = { ...n[row], operator: op };
+            return n;
+          });
+        });
+
+        // Granular co-op: partner cleared a full row
+        conn.on('24Undo', (_player: string, row: number) => {
+          setRows((prev) => {
+            const n = [...prev];
+            n[row] = emptyRow();
+            return n;
+          });
+          setPlacements((prev) => {
+            const p = { ...prev };
+            delete p[`${row}-card1`];
+            delete p[`${row}-card2`];
+            return p;
+          });
+          setActiveRow(row);
+        });
+
+        // Granular co-op: partner cleared a single slot
+        conn.on('24SlotCleared', (_player: string, row: number, slot: string, _sourceKey: string) => {
+          setRows((prev) => {
+            const n = [...prev];
+            const r = { ...n[row] };
+            if (slot === 'card1') r.card1 = null;
+            else r.card2 = null;
+            r.result = null;
+            n[row] = r;
+            return n;
+          });
+          setPlacements((prev) => { const p = { ...prev }; delete p[`${row}-${slot}`]; return p; });
         });
 
         conn.on('24ProgressUpdated', (_player: string, _completedRows: number) => {});
@@ -559,7 +622,13 @@ export default function TwentyFourRoom() {
     newRow[targetSlot] = value;
 
     const slotKey = `${activeRow}-${targetSlot}`;
+    const slotIndex = targetSlot === 'card1' ? 0 : 1;
     setPlacements((prev) => ({ ...prev, [slotKey]: sourceKey }));
+
+    // Broadcast card placement in cooperative mode
+    if (connRef.current && code && room?.mode === 'Cooperative') {
+      connRef.current.invoke('Place24Card', code, myName, activeRow, slotIndex, value, sourceKey).catch(() => {});
+    }
 
     // Auto-calculate and auto-lock when all 3 slots filled
     if (newRow.card1 !== null && newRow.card2 !== null && newRow.operator !== null) {
@@ -623,6 +692,11 @@ export default function TwentyFourRoom() {
 
     const newRows = [...rows];
     const newRow = { ...row, operator: op };
+
+    // Broadcast operator placement in cooperative mode
+    if (connRef.current && code && room?.mode === 'Cooperative') {
+      connRef.current.invoke('Place24Operator', code, myName, activeRow, op).catch(() => {});
+    }
 
     // Auto-calculate and auto-lock when all 3 slots filled
     if (newRow.card1 !== null && newRow.card2 !== null) {
@@ -693,7 +767,12 @@ export default function TwentyFourRoom() {
     });
     setErrorMsg('');
     sounds.undo();
-  }, [rows, activeRow]);
+
+    // Broadcast undo in cooperative mode
+    if (connRef.current && code && room?.mode === 'Cooperative') {
+      connRef.current.invoke('Undo24', code, myName, activeRow).catch(() => {});
+    }
+  }, [rows, activeRow, code, myName, room?.mode]);
 
   // Skip hand
   const skipHand = useCallback(() => {
@@ -705,22 +784,30 @@ export default function TwentyFourRoom() {
     const row = rows[activeRow];
     if (row.locked) return;
     if (slot === 'card1' && row.card1 !== null) {
+      const sourceKey = placements[`${activeRow}-card1`] || '';
       const newRows = [...rows];
       newRows[activeRow] = { ...row, card1: null, result: null };
       setRows(newRows);
       setPlacements((prev) => { const p = { ...prev }; delete p[`${activeRow}-card1`]; return p; });
       sounds.undo();
+      if (connRef.current && code && room?.mode === 'Cooperative') {
+        connRef.current.invoke('Clear24Slot', code, myName, activeRow, 'card1', sourceKey).catch(() => {});
+      }
       return;
     }
     if (slot === 'card2' && row.card2 !== null) {
+      const sourceKey = placements[`${activeRow}-card2`] || '';
       const newRows = [...rows];
       newRows[activeRow] = { ...row, card2: null, result: null };
       setRows(newRows);
       setPlacements((prev) => { const p = { ...prev }; delete p[`${activeRow}-card2`]; return p; });
       sounds.undo();
+      if (connRef.current && code && room?.mode === 'Cooperative') {
+        connRef.current.invoke('Clear24Slot', code, myName, activeRow, 'card2', sourceKey).catch(() => {});
+      }
       return;
     }
-  }, [rows, activeRow]);
+  }, [rows, activeRow, placements, code, myName, room?.mode]);
 
   // ===== Render =====
 
@@ -970,6 +1057,12 @@ export default function TwentyFourRoom() {
                   setResultCards(new Map());
                   setErrorMsg('');
                   sounds.undo();
+                  // Broadcast full reset in co-op: undo all 3 rows
+                  if (connRef.current && code && room?.mode === 'Cooperative') {
+                    for (let r = 0; r < 3; r++) {
+                      connRef.current.invoke('Undo24', code, myName, r).catch(() => {});
+                    }
+                  }
                 }}
                 className="px-4 py-3 bg-gray-700 hover:bg-gray-600 text-gray-200 font-medium rounded-xl transition-all"
               >
