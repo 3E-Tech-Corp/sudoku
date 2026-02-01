@@ -314,7 +314,6 @@ export default function TwentyFourRoom() {
   const [showWin, setShowWin] = useState<string | null>(null);
   const [dealing, setDealing] = useState(false);
   const [faceDown, setFaceDown] = useState(true);
-  const [selectingFor, setSelectingFor] = useState<'card1' | 'card2' | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [timerExpired, setTimerExpired] = useState(false);
 
@@ -325,7 +324,6 @@ export default function TwentyFourRoom() {
     setActiveRow(0);
     setPlacements({});
     setResultCards(new Map());
-    setSelectingFor(null);
     setErrorMsg('');
     setShowWin(null);
     setFaceDown(true);
@@ -433,30 +431,66 @@ export default function TwentyFourRoom() {
     joinAndLoad(nameInput.trim());
   };
 
-  // Place a number into the current row
+  // Place a number into the next empty card slot of the current row (tap-to-place)
   const placeNumber = useCallback((value: number, sourceKey: string) => {
-    if (faceDown || !selectingFor) return;
+    if (faceDown) return;
     const row = rows[activeRow];
     if (row.locked) return;
 
+    // Find the next empty card slot: card1 first, then card2
+    let targetSlot: 'card1' | 'card2' | null = null;
+    if (row.card1 === null) targetSlot = 'card1';
+    else if (row.card2 === null) targetSlot = 'card2';
+    if (!targetSlot) return; // both slots filled
+
     const newRows = [...rows];
     const newRow = { ...row };
+    newRow[targetSlot] = value;
 
-    if (selectingFor === 'card1') {
-      if (newRow.card1 !== null) return;
-      newRow.card1 = value;
-    } else if (selectingFor === 'card2') {
-      if (newRow.card2 !== null) return;
-      newRow.card2 = value;
-    }
-
-    const slotKey = `${activeRow}-${selectingFor}`;
+    const slotKey = `${activeRow}-${targetSlot}`;
     setPlacements((prev) => ({ ...prev, [slotKey]: sourceKey }));
 
+    // Auto-calculate and auto-lock when all 3 slots filled
     if (newRow.card1 !== null && newRow.card2 !== null && newRow.operator !== null) {
       const result = calculateResult(newRow.card1, newRow.operator, newRow.card2);
       if (result !== null && result > 0 && Number.isInteger(result)) {
         newRow.result = result;
+        newRow.locked = true;
+        newRows[activeRow] = newRow;
+        setRows(newRows);
+        sounds.cardPlace();
+
+        // Add result as available card
+        setResultCards((prev) => new Map(prev).set(activeRow, result));
+
+        // Check win on row 3
+        if (activeRow === 2 && result === 24) {
+          const steps: TwentyFourStep[] = newRows.map((r) => ({
+            card1: r.card1!, operation: r.operator!, card2: r.card2!, result: r.result!,
+          }));
+          if (connRef.current && code) connRef.current.invoke('Win24Game', code, myName, JSON.stringify(steps));
+          return;
+        }
+        if (activeRow === 2 && result !== 24) {
+          setErrorMsg('Final result must equal 24! Row unlocked — try again.');
+          sounds.error();
+          newRow.locked = false;
+          newRow.result = null;
+          newRows[activeRow] = newRow;
+          setRows(newRows);
+          setResultCards((prev) => { const m = new Map(prev); m.delete(activeRow); return m; });
+          setTimeout(() => setErrorMsg(''), 3000);
+          return;
+        }
+
+        // Advance to next row
+        sounds.rowComplete();
+        setActiveRow((prev) => prev + 1);
+
+        if (connRef.current && code && room?.mode === 'Cooperative') {
+          connRef.current.invoke('Complete24Row', code, myName, activeRow, newRow.card1, newRow.operator, newRow.card2, result);
+        }
+        return;
       } else {
         newRow.result = null;
         setErrorMsg('Result must be a positive whole number. Try different numbers or operator.');
@@ -467,11 +501,10 @@ export default function TwentyFourRoom() {
 
     newRows[activeRow] = newRow;
     setRows(newRows);
-    setSelectingFor(null);
     sounds.cardPlace();
-  }, [faceDown, selectingFor, rows, activeRow]);
+  }, [faceDown, rows, activeRow, code, myName, room?.mode]);
 
-  // Place an operator into the active row
+  // Place an operator into the active row (tap-to-place)
   const placeOperator = useCallback((op: string) => {
     if (faceDown) return;
     const row = rows[activeRow];
@@ -480,10 +513,47 @@ export default function TwentyFourRoom() {
     const newRows = [...rows];
     const newRow = { ...row, operator: op };
 
+    // Auto-calculate and auto-lock when all 3 slots filled
     if (newRow.card1 !== null && newRow.card2 !== null) {
       const result = calculateResult(newRow.card1, op, newRow.card2);
       if (result !== null && result > 0 && Number.isInteger(result)) {
         newRow.result = result;
+        newRow.locked = true;
+        newRows[activeRow] = newRow;
+        setRows(newRows);
+        sounds.operatorSelect();
+
+        // Add result as available card
+        setResultCards((prev) => new Map(prev).set(activeRow, result));
+
+        // Check win on row 3
+        if (activeRow === 2 && result === 24) {
+          const steps: TwentyFourStep[] = newRows.map((r) => ({
+            card1: r.card1!, operation: r.operator!, card2: r.card2!, result: r.result!,
+          }));
+          if (connRef.current && code) connRef.current.invoke('Win24Game', code, myName, JSON.stringify(steps));
+          return;
+        }
+        if (activeRow === 2 && result !== 24) {
+          setErrorMsg('Final result must equal 24! Row unlocked — try again.');
+          sounds.error();
+          newRow.locked = false;
+          newRow.result = null;
+          newRows[activeRow] = newRow;
+          setRows(newRows);
+          setResultCards((prev) => { const m = new Map(prev); m.delete(activeRow); return m; });
+          setTimeout(() => setErrorMsg(''), 3000);
+          return;
+        }
+
+        // Advance to next row
+        sounds.rowComplete();
+        setActiveRow((prev) => prev + 1);
+
+        if (connRef.current && code && room?.mode === 'Cooperative') {
+          connRef.current.invoke('Complete24Row', code, myName, activeRow, newRow.card1, newRow.operator, newRow.card2, result);
+        }
+        return;
       } else {
         newRow.result = null;
         setErrorMsg('Result must be a positive whole number. Try a different operator.');
@@ -495,44 +565,9 @@ export default function TwentyFourRoom() {
     newRows[activeRow] = newRow;
     setRows(newRows);
     sounds.operatorSelect();
-  }, [faceDown, rows, activeRow]);
+  }, [faceDown, rows, activeRow, code, myName, room?.mode]);
 
-  // Lock current row and move to next
-  const lockRow = useCallback(() => {
-    const row = rows[activeRow];
-    if (!row.card1 || !row.operator || !row.card2 || !row.result) return;
-
-    const newRows = [...rows];
-    newRows[activeRow] = { ...row, locked: true };
-    setRows(newRows);
-    setResultCards((prev) => new Map(prev).set(activeRow, row.result!));
-
-    if (activeRow === 2 && row.result === 24) {
-      const steps: TwentyFourStep[] = newRows.map((r) => ({
-        card1: r.card1!, operation: r.operator!, card2: r.card2!, result: r.result!,
-      }));
-      if (connRef.current && code) connRef.current.invoke('Win24Game', code, myName, JSON.stringify(steps));
-      return;
-    }
-
-    if (activeRow === 2 && row.result !== 24) {
-      setErrorMsg('Final result must equal 24! Undo and try again.');
-      sounds.error();
-      newRows[activeRow] = { ...row, locked: false };
-      setRows(newRows);
-      setTimeout(() => setErrorMsg(''), 3000);
-      return;
-    }
-
-    sounds.rowComplete();
-    setActiveRow((prev) => prev + 1);
-
-    if (connRef.current && code && room?.mode === 'Cooperative') {
-      connRef.current.invoke('Complete24Row', code, myName, activeRow, row.card1, row.operator, row.card2, row.result);
-    }
-  }, [rows, activeRow, code, myName, room?.mode]);
-
-  // Undo current row
+  // Undo current row (clear all placements)
   const undoCurrentRow = useCallback(() => {
     const row = rows[activeRow];
     if (row.locked) return;
@@ -545,7 +580,6 @@ export default function TwentyFourRoom() {
       delete newP[`${activeRow}-card2`];
       return newP;
     });
-    setSelectingFor(null);
     setErrorMsg('');
     sounds.undo();
   }, [rows, activeRow]);
@@ -555,15 +589,15 @@ export default function TwentyFourRoom() {
     if (connRef.current && code) connRef.current.invoke('Skip24Hand', code, myName);
   }, [code, myName]);
 
-  // Handle slot click in equation row
+  // Handle slot click in equation row — tap to undo individual placement
   const handleSlotClick = useCallback((slot: 'card1' | 'card2') => {
     const row = rows[activeRow];
+    if (row.locked) return;
     if (slot === 'card1' && row.card1 !== null) {
       const newRows = [...rows];
       newRows[activeRow] = { ...row, card1: null, result: null };
       setRows(newRows);
       setPlacements((prev) => { const p = { ...prev }; delete p[`${activeRow}-card1`]; return p; });
-      setSelectingFor(null);
       sounds.undo();
       return;
     }
@@ -572,11 +606,9 @@ export default function TwentyFourRoom() {
       newRows[activeRow] = { ...row, card2: null, result: null };
       setRows(newRows);
       setPlacements((prev) => { const p = { ...prev }; delete p[`${activeRow}-card2`]; return p; });
-      setSelectingFor(null);
       sounds.undo();
       return;
     }
-    setSelectingFor(slot);
   }, [rows, activeRow]);
 
   // ===== Render =====
@@ -638,8 +670,6 @@ export default function TwentyFourRoom() {
   }
 
   const isCompetitive = room.mode === 'Competitive';
-  const currentRow = rows[activeRow];
-  const canLock = currentRow && currentRow.card1 !== null && currentRow.card2 !== null && currentRow.operator !== null && currentRow.result !== null && !currentRow.locked;
   const usedSourceKeys = new Set(Object.values(placements));
 
   return (
@@ -722,12 +752,12 @@ export default function TwentyFourRoom() {
                   >
                     <PlayingCard
                       card={card}
-                      used={isUsed && !selectingFor}
+                      used={isUsed}
                       selected={false}
                       faceDown={faceDown}
                       themeId={themeId}
                       onClick={() => {
-                        if (selectingFor && !isUsed) placeNumber(card.number, `card-${i}`);
+                        if (!isUsed) placeNumber(card.number, `card-${i}`);
                       }}
                     />
                   </div>
@@ -745,23 +775,14 @@ export default function TwentyFourRoom() {
                       key={`result-${rowIdx}`}
                       card={{ number: value, suit: 'Results' }}
                       isResult
-                      used={isUsed && !selectingFor}
+                      used={isUsed}
                       themeId={themeId}
                       onClick={() => {
-                        if (selectingFor && !isUsed) placeNumber(value, `result-${rowIdx}`);
+                        if (!isUsed) placeNumber(value, `result-${rowIdx}`);
                       }}
                     />
                   );
                 })}
-              </div>
-            )}
-
-            {/* Selection hint */}
-            {selectingFor && (
-              <div className="text-center mb-3">
-                <span className="text-blue-400 text-sm animate-pulse">
-                  👆 Tap a card to place it in {selectingFor === 'card1' ? 'the first' : 'the second'} slot
-                </span>
               </div>
             )}
 
@@ -792,14 +813,6 @@ export default function TwentyFourRoom() {
 
             {/* Action buttons */}
             <div className="flex justify-center gap-3 flex-wrap">
-              {canLock && (
-                <button
-                  onClick={lockRow}
-                  className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl transition-all active:scale-95 text-lg"
-                >
-                  {activeRow === 2 ? '✓ Check = 24?' : '✓ Lock Row'}
-                </button>
-              )}
               <button
                 onClick={undoCurrentRow}
                 disabled={!rows[activeRow] || (rows[activeRow].card1 === null && rows[activeRow].operator === null)}
@@ -813,7 +826,6 @@ export default function TwentyFourRoom() {
                   setActiveRow(0);
                   setPlacements({});
                   setResultCards(new Map());
-                  setSelectingFor(null);
                   setErrorMsg('');
                   sounds.undo();
                 }}
@@ -891,10 +903,10 @@ export default function TwentyFourRoom() {
               <div className="mt-4 pt-4 border-t border-gray-700">
                 <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-2">How to Play</h3>
                 <div className="text-gray-500 text-xs space-y-1">
-                  <p>1. Tap a card slot, then tap a card</p>
-                  <p>2. Choose an operator (+, −, ×, ÷)</p>
-                  <p>3. Results must be positive integers</p>
-                  <p>4. Use 3 rows to make <span className="text-amber-400 font-bold">24</span></p>
+                  <p>1. Tap cards &amp; operators — they auto-fill the current row</p>
+                  <p>2. Rows auto-lock when complete</p>
+                  <p>3. Results become new cards for the next row</p>
+                  <p>4. Make <span className="text-amber-400 font-bold">24</span> on the final row to win!</p>
                 </div>
               </div>
             </div>
