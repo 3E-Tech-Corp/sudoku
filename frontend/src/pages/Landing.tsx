@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import api from '../services/api';
 
 const GAMES = [
   {
@@ -8,9 +10,11 @@ const GAMES = [
     gradient: 'from-blue-600 via-blue-700 to-indigo-800',
     hoverGradient: 'hover:from-blue-500 hover:via-blue-600 hover:to-indigo-700',
     border: 'border-blue-500/30',
+    soloAccent: 'text-blue-300 hover:text-blue-200',
     description: 'Classic 9×9 number puzzle',
     longDesc: 'Fill every row, column, and 3×3 box with the numbers 1 through 9. Cooperate with friends or race to finish first.',
     features: ['Easy, Medium, Hard', 'Co-op & Competitive', 'Real-time multiplayer'],
+    apiGameType: 'Sudoku',
   },
   {
     id: '24',
@@ -19,9 +23,11 @@ const GAMES = [
     gradient: 'from-amber-600 via-orange-700 to-red-800',
     hoverGradient: 'hover:from-amber-500 hover:via-orange-600 hover:to-red-700',
     border: 'border-amber-500/30',
+    soloAccent: 'text-amber-300 hover:text-amber-200',
     description: 'Make 24 from 4 cards',
     longDesc: 'Deal 4 cards and combine them using +, −, ×, ÷ to make exactly 24. Three equations, one goal. Race your friends!',
     features: ['Playing card deck', 'Step-by-step equations', 'Score tracking'],
+    apiGameType: 'TwentyFour',
   },
   {
     id: 'blackjack',
@@ -30,9 +36,11 @@ const GAMES = [
     gradient: 'from-emerald-600 via-green-700 to-teal-800',
     hoverGradient: 'hover:from-emerald-500 hover:via-green-600 hover:to-teal-700',
     border: 'border-emerald-500/30',
+    soloAccent: 'text-emerald-300 hover:text-emerald-200',
     description: 'Classic casino card game',
     longDesc: 'Beat the dealer by getting as close to 21 as possible without going over. Hit, stand, or double down!',
     features: ['Multiplayer tables', 'Virtual chips', 'Real card dealing'],
+    apiGameType: 'Blackjack',
   },
   {
     id: 'chess',
@@ -41,14 +49,40 @@ const GAMES = [
     gradient: 'from-slate-600 via-gray-700 to-zinc-800',
     hoverGradient: 'hover:from-slate-500 hover:via-gray-600 hover:to-zinc-700',
     border: 'border-slate-500/30',
+    soloAccent: 'text-slate-300 hover:text-slate-200',
     description: 'The classic strategy game',
     longDesc: 'The ultimate game of strategy. Checkmate your opponent in this timeless battle of wits. Full rules including castling, en passant, and promotion.',
     features: ['1v1 multiplayer', 'Full move validation', 'Castling & en passant'],
+    apiGameType: 'Chess',
   },
 ];
 
 export default function Landing() {
   const navigate = useNavigate();
+  const [loadingId, setLoadingId] = useState<string | null>(null);
+
+  const startSolo = async (game: typeof GAMES[0], e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (loadingId) return;
+    setLoadingId(game.id);
+
+    try {
+      const name = localStorage.getItem('sudoku_name') || 'Player';
+      const resp = await api.post<{ code: string }>('/rooms', {
+        hostName: name,
+        gameType: game.apiGameType,
+        difficulty: game.id === 'sudoku' ? 'Medium' : undefined,
+        mode: 'Cooperative',
+      });
+      navigate(`/room/${resp.code}`);
+    } catch (err) {
+      console.error('Failed to create solo room:', err);
+      // Fall back to lobby
+      navigate(`/games/${game.id}`);
+    } finally {
+      setLoadingId(null);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-900 flex items-center justify-center px-4 py-12">
@@ -99,9 +133,17 @@ export default function Landing() {
                   ))}
                 </div>
 
-                <div className="flex items-center gap-2 text-white font-semibold group-hover:gap-3 transition-all">
-                  <span>Play Now</span>
-                  <span className="text-xl transition-transform group-hover:translate-x-1">→</span>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-white font-semibold group-hover:gap-3 transition-all">
+                    <span>Play Now</span>
+                    <span className="text-xl transition-transform group-hover:translate-x-1">→</span>
+                  </div>
+                  <span
+                    onClick={(e) => startSolo(game, e)}
+                    className={`text-xs font-medium ${game.soloAccent} opacity-70 hover:opacity-100 transition-opacity underline underline-offset-2 cursor-pointer`}
+                  >
+                    {loadingId === game.id ? 'Starting...' : 'Practice Solo ⚡'}
+                  </span>
                 </div>
               </div>
             </button>

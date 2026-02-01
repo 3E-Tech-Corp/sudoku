@@ -89,6 +89,18 @@ public class GameHub : Hub
             }
         }
 
+        // Auto-add player to Blackjack game state on join
+        try
+        {
+            var room = await _roomService.GetRoomByCode(code);
+            if (room?.GameType == "Blackjack")
+            {
+                var state = await _blackjackService.EnsurePlayerInGame(room.Id, displayName);
+                await Clients.Group(code).SendAsync("BJStateUpdated", BlackjackService.SanitizeState(state));
+            }
+        }
+        catch { /* non-critical — player can still be added on first bet */ }
+
         await Clients.Group(code).SendAsync("PlayerJoined", displayName);
         await Clients.Group(code).SendAsync("PeerJoined", Context.ConnectionId, displayName);
     }
