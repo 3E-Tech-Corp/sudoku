@@ -9,6 +9,7 @@ export interface RoomVisuals {
   cardLayout: 'row' | 'grid';
   operatorPosition: 'center' | 'left' | 'right';
   deckThemeId: string;
+  clockStyle: 'none' | 'minimal' | 'digital' | 'analog';
 }
 
 // ===== Presets =====
@@ -43,6 +44,7 @@ export function getDefaultVisuals(): RoomVisuals {
     cardLayout: 'row',
     operatorPosition: 'center',
     deckThemeId: 'classic',
+    clockStyle: 'digital',
   };
 }
 
@@ -57,6 +59,7 @@ export function getSavedVisuals(): RoomVisuals {
         cardLayout: p.cardLayout === 'grid' ? 'grid' : 'row',
         operatorPosition: ['left', 'right', 'center'].includes(p.operatorPosition) ? p.operatorPosition : 'center',
         deckThemeId: DECK_THEMES.some((t: DeckTheme) => t.id === p.deckThemeId) ? p.deckThemeId : 'classic',
+        clockStyle: ['none', 'minimal', 'digital', 'analog'].includes(p.clockStyle) ? p.clockStyle : 'digital',
       };
     }
   } catch { /* ignore */ }
@@ -225,6 +228,35 @@ export default function RoomSettings({ visuals, onChange }: RoomSettingsProps) {
 
             {tab === 'layout' && (
               <>
+                {/* Clock Style */}
+                <div>
+                  <h4 className="text-gray-400 text-xs font-semibold uppercase tracking-wider mb-2">Clock</h4>
+                  <div className="grid grid-cols-4 gap-2">
+                    {([
+                      { value: 'none' as const, label: 'Off', icon: '—' },
+                      { value: 'minimal' as const, label: 'Minimal', icon: '0:42' },
+                      { value: 'digital' as const, label: 'Digital', icon: '⏱' },
+                      { value: 'analog' as const, label: 'Analog', icon: '🕐' },
+                    ]).map((opt) => {
+                      const active = visuals.clockStyle === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          onClick={() => update({ clockStyle: opt.value })}
+                          className={`p-2 rounded-lg text-center transition-all ${
+                            active
+                              ? 'bg-amber-600/20 border border-amber-500/50 ring-1 ring-amber-500/30'
+                              : 'bg-gray-700/40 border border-transparent hover:bg-gray-700'
+                          }`}
+                        >
+                          <div className="text-lg mb-0.5">{opt.icon}</div>
+                          <div className={`text-[10px] font-semibold ${active ? 'text-amber-300' : 'text-white'}`}>{opt.label}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 {/* Card Arrangement */}
                 <div>
                   <h4 className="text-gray-400 text-xs font-semibold uppercase tracking-wider mb-2">Card Arrangement</h4>

@@ -339,7 +339,45 @@ function getWinPhrase(winnerName: string, isMe: boolean): { text: string; audio:
 
 // ===== Hand Stopwatch Component =====
 
-function HandStopwatch({ running, resetKey }: { running: boolean; resetKey: number }) {
+function AnalogClock({ seconds }: { seconds: number }) {
+  const totalSec = seconds % 3600;
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  const minuteAngle = (m / 60) * 360 - 90;
+  const secondAngle = (s / 60) * 360 - 90;
+  const r = 20;
+  const cx = 24;
+  const cy = 24;
+
+  const polarToCart = (angle: number, radius: number) => ({
+    x: cx + radius * Math.cos((angle * Math.PI) / 180),
+    y: cy + radius * Math.sin((angle * Math.PI) / 180),
+  });
+
+  const mEnd = polarToCart(minuteAngle, r * 0.6);
+  const sEnd = polarToCart(secondAngle, r * 0.85);
+
+  return (
+    <svg width="48" height="48" viewBox="0 0 48 48" className="flex-shrink-0">
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke="#4B5563" strokeWidth="2" />
+      {/* Tick marks */}
+      {Array.from({ length: 12 }, (_, i) => {
+        const angle = (i / 12) * 360 - 90;
+        const inner = polarToCart(angle, r - 3);
+        const outer = polarToCart(angle, r - 1);
+        return <line key={i} x1={inner.x} y1={inner.y} x2={outer.x} y2={outer.y} stroke="#6B7280" strokeWidth={i % 3 === 0 ? 2 : 1} />;
+      })}
+      {/* Minute hand */}
+      <line x1={cx} y1={cy} x2={mEnd.x} y2={mEnd.y} stroke="#D1D5DB" strokeWidth="2.5" strokeLinecap="round" />
+      {/* Second hand */}
+      <line x1={cx} y1={cy} x2={sEnd.x} y2={sEnd.y} stroke="#F59E0B" strokeWidth="1.5" strokeLinecap="round" />
+      {/* Center dot */}
+      <circle cx={cx} cy={cy} r="2" fill="#F59E0B" />
+    </svg>
+  );
+}
+
+function HandStopwatch({ running, resetKey, style }: { running: boolean; resetKey: number; style: string }) {
   const [elapsed, setElapsed] = useState(0);
   const startRef = useRef<number>(Date.now());
   const frameRef = useRef<ReturnType<typeof setInterval>>();
@@ -359,13 +397,33 @@ function HandStopwatch({ running, resetKey }: { running: boolean; resetKey: numb
     }
   }, [running, resetKey]);
 
+  if (style === 'none') return null;
+
   const m = Math.floor(elapsed / 60);
   const s = elapsed % 60;
+  const timeStr = `${m}:${s.toString().padStart(2, '0')}`;
+
+  if (style === 'analog') {
+    return (
+      <div className="flex items-center gap-2">
+        <AnalogClock seconds={elapsed} />
+        <span className="font-mono text-sm text-gray-400 tabular-nums">{timeStr}</span>
+      </div>
+    );
+  }
+
+  if (style === 'minimal') {
+    return (
+      <span className="font-mono text-lg text-gray-400 tabular-nums">{timeStr}</span>
+    );
+  }
+
+  // digital (default)
   return (
     <div className="flex items-center gap-2 text-gray-300">
       <span className="text-lg">⏱</span>
       <span className="font-mono text-xl sm:text-2xl font-bold tabular-nums">
-        {m}:{s.toString().padStart(2, '0')}
+        {timeStr}
       </span>
     </div>
   );
@@ -953,7 +1011,7 @@ export default function TwentyFourRoom() {
                   </>
                 )}
               </div>
-              <HandStopwatch running={handClockRunning} resetKey={handClockKey} />
+              <HandStopwatch running={handClockRunning} resetKey={handClockKey} style={visuals.clockStyle} />
             </div>
 
             {/* ── LAYOUT-AWARE GAME AREA ── */}
