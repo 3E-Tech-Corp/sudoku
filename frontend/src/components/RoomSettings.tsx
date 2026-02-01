@@ -233,6 +233,51 @@ export default function RoomSettings({ visuals, onChange }: RoomSettingsProps) {
 
             {tab === 'layout' && (
               <>
+                {/* Layout Presets */}
+                <div>
+                  <h4 className="text-gray-400 text-xs font-semibold uppercase tracking-wider mb-2">Quick Presets</h4>
+                  <div className="grid grid-cols-3 gap-2">
+                    {([
+                      {
+                        label: '📱 Mobile',
+                        desc: 'Compact grid',
+                        patch: { cardLayout: 'grid' as const, operatorPosition: 'center' as const, clockStyle: 'minimal' as const, videoPosition: 'bottom-right' as VideoPosition },
+                      },
+                      {
+                        label: '📱 Tablet',
+                        desc: 'Side controls',
+                        patch: { cardLayout: 'row' as const, operatorPosition: 'right' as const, clockStyle: 'digital' as const, videoPosition: 'top-right' as VideoPosition },
+                      },
+                      {
+                        label: '🖥️ Desktop',
+                        desc: 'Full layout',
+                        patch: { cardLayout: 'row' as const, operatorPosition: 'center' as const, clockStyle: 'digital' as const, videoPosition: 'inline' as VideoPosition },
+                      },
+                    ]).map((preset) => {
+                      // Check if current visuals match this preset
+                      const isActive = Object.entries(preset.patch).every(
+                        ([k, v]) => visuals[k as keyof RoomVisuals] === v
+                      );
+                      return (
+                        <button
+                          key={preset.label}
+                          onClick={() => update(preset.patch)}
+                          className={`p-2.5 rounded-lg text-center transition-all ${
+                            isActive
+                              ? 'bg-emerald-600/20 border border-emerald-500/50 ring-1 ring-emerald-500/30'
+                              : 'bg-gray-700/40 border border-transparent hover:bg-gray-700'
+                          }`}
+                        >
+                          <div className={`text-xs font-semibold ${isActive ? 'text-emerald-300' : 'text-white'}`}>{preset.label}</div>
+                          <div className="text-[9px] text-gray-400 mt-0.5">{preset.desc}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="border-t border-gray-700/50 pt-4" />
+
                 {/* Clock Style */}
                 <div>
                   <h4 className="text-gray-400 text-xs font-semibold uppercase tracking-wider mb-2">Clock</h4>
