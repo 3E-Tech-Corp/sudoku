@@ -6,6 +6,7 @@ import { sounds } from '../services/sounds';
 import VideoChat from '../components/VideoChat';
 import GameTimer from '../components/GameTimer';
 import DeckPicker from '../components/DeckPicker';
+import LayoutPicker, { getSavedLayout, saveLayout, type LayoutConfig } from '../components/LayoutPicker';
 import { getSavedThemeId, saveThemeId, getThemeById } from '../config/deckThemes';
 import confetti from 'canvas-confetti';
 import type { HubConnection } from '@microsoft/signalr';
@@ -390,6 +391,13 @@ export default function TwentyFourRoom() {
   const handleThemeChange = useCallback((id: string) => {
     setThemeId(id);
     saveThemeId(id);
+  }, []);
+
+  // Board layout (persisted in localStorage)
+  const [layout, setLayout] = useState<LayoutConfig>(getSavedLayout);
+  const handleLayoutChange = useCallback((l: LayoutConfig) => {
+    setLayout(l);
+    saveLayout(l);
   }, []);
 
   // Game state
@@ -889,6 +897,7 @@ export default function TwentyFourRoom() {
             )}
           </h1>
           <div className="flex items-center gap-3">
+            <LayoutPicker layout={layout} onChange={handleLayoutChange} />
             <DeckPicker currentThemeId={themeId} onChange={handleThemeChange} />
             <VideoChat connection={connRef.current} roomCode={code || ''} myName={myName} myColor={myColor} />
             <span className="text-gray-500 text-sm flex items-center gap-2">
@@ -952,50 +961,50 @@ export default function TwentyFourRoom() {
               <HandStopwatch running={handClockRunning} resetKey={handClockKey} />
             </div>
 
-            {/* ── NEW LAYOUT ── */}
+            {/* ── LAYOUT-AWARE GAME AREA ── */}
 
-            {/* Green felt table surface */}
-            <div
-              className="relative rounded-2xl sm:rounded-3xl p-4 sm:p-6 mb-5 border-4 border-amber-900/80 shadow-[inset_0_2px_20px_rgba(0,0,0,0.4),0_4px_12px_rgba(0,0,0,0.3)]"
-              style={{
-                background: 'radial-gradient(ellipse at center, #2d7a3a 0%, #1e6b2a 40%, #165a22 100%)',
-                backgroundImage: `radial-gradient(ellipse at center, #2d7a3a 0%, #1e6b2a 40%, #165a22 100%), url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.08'/%3E%3C/svg%3E")`,
-              }}
-            >
-              {/* Subtle felt texture overlay */}
-              <div className="absolute inset-0 rounded-2xl sm:rounded-3xl opacity-[0.06] pointer-events-none" style={{
-                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Crect width='4' height='4' fill='%23000'/%3E%3Crect width='1' height='1' fill='%23fff'/%3E%3C/svg%3E")`,
-                backgroundSize: '4px 4px',
-              }} />
+            {/* Operator buttons (rendered as a reusable block) */}
+            {(() => {
+              const operatorButtons = (vertical?: boolean) => (
+                <div className={vertical
+                  ? 'flex flex-col gap-2 sm:gap-3 justify-center'
+                  : 'flex justify-center gap-3 sm:gap-4'
+                }>
+                  {['+', '-', '*', '/'].map((op) => (
+                    <OperatorButton
+                      key={op}
+                      op={op}
+                      selected={rows[activeRow]?.operator === op}
+                      onClick={() => placeOperator(op)}
+                    />
+                  ))}
+                </div>
+              );
 
-              {/* 1. Dealt cards on felt */}
-              <div className="flex justify-center gap-2 sm:gap-4 mb-4">
-                {cards.map((card, i) => {
-                  const isUsed = usedSourceKeys.has(`card-${i}`);
-                  return (
-                    <div
-                      key={`${i}-${card.number}-${card.suit}`}
-                      className={`transition-all duration-500 ${dealing ? 'opacity-0 translate-y-8' : 'opacity-100 translate-y-0'}`}
-                      style={{ transitionDelay: `${i * 100}ms` }}
-                    >
-                      <PlayingCard
-                        card={card}
-                        used={isUsed}
-                        selected={false}
-                        faceDown={faceDown}
-                        themeId={themeId}
-                        onClick={() => {
-                          if (!isUsed) placeNumber(card.number, `card-${i}`);
-                        }}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
+              const cardElements = cards.map((card, i) => {
+                const isUsed = usedSourceKeys.has(`card-${i}`);
+                return (
+                  <div
+                    key={`${i}-${card.number}-${card.suit}`}
+                    className={`transition-all duration-500 ${dealing ? 'opacity-0 translate-y-8' : 'opacity-100 translate-y-0'}`}
+                    style={{ transitionDelay: `${i * 100}ms` }}
+                  >
+                    <PlayingCard
+                      card={card}
+                      used={isUsed}
+                      selected={false}
+                      faceDown={faceDown}
+                      themeId={themeId}
+                      onClick={() => {
+                        if (!isUsed) placeNumber(card.number, `card-${i}`);
+                      }}
+                    />
+                  </div>
+                );
+              });
 
-              {/* Result cards from completed rows */}
-              {resultCards.size > 0 && (
-                <div className="flex justify-center gap-2 sm:gap-3 mb-3">
+              const resultCardElements = resultCards.size > 0 ? (
+                <div className="flex justify-center gap-2 sm:gap-3">
                   {Array.from(resultCards.entries()).map(([rowIdx, value]) => {
                     const isUsed = usedSourceKeys.has(`result-${rowIdx}`);
                     return (
@@ -1012,20 +1021,71 @@ export default function TwentyFourRoom() {
                     );
                   })}
                 </div>
-              )}
-            </div>
+              ) : null;
 
-            {/* 2. Operator buttons — large, touch-friendly, always visible between felt and rows */}
-            <div className="flex justify-center gap-3 sm:gap-4 mb-5">
-              {['+', '-', '*', '/'].map((op) => (
-                <OperatorButton
-                  key={op}
-                  op={op}
-                  selected={rows[activeRow]?.operator === op}
-                  onClick={() => placeOperator(op)}
-                />
-              ))}
-            </div>
+              const feltStyle = {
+                background: 'radial-gradient(ellipse at center, #2d7a3a 0%, #1e6b2a 40%, #165a22 100%)',
+                backgroundImage: `radial-gradient(ellipse at center, #2d7a3a 0%, #1e6b2a 40%, #165a22 100%), url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.08'/%3E%3C/svg%3E")`,
+              };
+
+              const feltOverlay = (
+                <div className="absolute inset-0 rounded-2xl sm:rounded-3xl opacity-[0.06] pointer-events-none" style={{
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Crect width='4' height='4' fill='%23000'/%3E%3Crect width='1' height='1' fill='%23fff'/%3E%3C/svg%3E")`,
+                  backgroundSize: '4px 4px',
+                }} />
+              );
+
+              const isRow = layout.cardLayout === 'row';
+              const opPos = layout.operatorPosition;
+
+              // Cards section inside felt
+              const cardsSection = (
+                <>
+                  <div className={isRow
+                    ? 'flex justify-center gap-2 sm:gap-4 mb-4'
+                    : 'grid grid-cols-2 gap-2 sm:gap-3 justify-items-center mb-4 max-w-[200px] sm:max-w-[220px] mx-auto'
+                  }>
+                    {cardElements}
+                  </div>
+                  {resultCardElements && <div className="mb-3">{resultCardElements}</div>}
+                </>
+              );
+
+              // Layout: operators on left or right
+              if (opPos === 'left' || opPos === 'right') {
+                return (
+                  <>
+                    <div className="flex gap-3 sm:gap-4 items-stretch mb-5">
+                      {opPos === 'left' && operatorButtons(true)}
+                      <div
+                        className="relative rounded-2xl sm:rounded-3xl p-4 sm:p-6 flex-1 border-4 border-amber-900/80 shadow-[inset_0_2px_20px_rgba(0,0,0,0.4),0_4px_12px_rgba(0,0,0,0.3)]"
+                        style={feltStyle}
+                      >
+                        {feltOverlay}
+                        {cardsSection}
+                      </div>
+                      {opPos === 'right' && operatorButtons(true)}
+                    </div>
+                  </>
+                );
+              }
+
+              // Layout: operators centered (default)
+              return (
+                <>
+                  <div
+                    className="relative rounded-2xl sm:rounded-3xl p-4 sm:p-6 mb-5 border-4 border-amber-900/80 shadow-[inset_0_2px_20px_rgba(0,0,0,0.4),0_4px_12px_rgba(0,0,0,0.3)]"
+                    style={feltStyle}
+                  >
+                    {feltOverlay}
+                    {cardsSection}
+                  </div>
+                  <div className="mb-5">
+                    {operatorButtons(false)}
+                  </div>
+                </>
+              );
+            })()}
 
             {/* 3. Equation rows */}
             <div className="space-y-3 mb-6">
