@@ -284,22 +284,22 @@ function EquationRow({
 
 // ===== Encouraging phrases =====
 
-const WIN_PHRASES_SELF = [
-  '🔥 Nicely done!',
-  '⚡ Excellent!',
-  '🧠 Brilliant mind!',
-  '💪 You crushed it!',
-  '🎯 Sharp as a tack!',
-  '👏 Masterful!',
-  '✨ Pure genius!',
-  '🏅 Math wizard!',
-  '💎 Flawless!',
-  '🚀 Unstoppable!',
-  '🎉 Nailed it!',
-  '😎 Too easy for you!',
-  '🌟 Spectacular!',
-  '🧮 Calculator who?',
-  '👑 Crown yourself!',
+const WIN_PHRASES_SELF: { text: string; audio: string }[] = [
+  { text: '🔥 Nicely done!', audio: '/audio/win_nicely_done.mp3' },
+  { text: '⚡ Excellent!', audio: '/audio/win_excellent.mp3' },
+  { text: '🧠 Brilliant mind!', audio: '/audio/win_brilliant.mp3' },
+  { text: '💪 You crushed it!', audio: '/audio/win_crushed.mp3' },
+  { text: '🎯 Sharp as a tack!', audio: '/audio/win_sharp.mp3' },
+  { text: '👏 Masterful!', audio: '/audio/win_masterful.mp3' },
+  { text: '✨ Pure genius!', audio: '/audio/win_genius.mp3' },
+  { text: '🏅 Math wizard!', audio: '/audio/win_wizard.mp3' },
+  { text: '💎 Flawless!', audio: '/audio/win_flawless.mp3' },
+  { text: '🚀 Unstoppable!', audio: '/audio/win_unstoppable.mp3' },
+  { text: '🎉 Nailed it!', audio: '/audio/win_nailed.mp3' },
+  { text: '😎 Too easy for you!', audio: '/audio/win_too_easy.mp3' },
+  { text: '🌟 Spectacular!', audio: '/audio/win_spectacular.mp3' },
+  { text: '🧮 Calculator who?', audio: '/audio/win_calculator.mp3' },
+  { text: '👑 Crown yourself!', audio: '/audio/win_crown.mp3' },
 ];
 
 const WIN_PHRASES_OTHER = [
@@ -318,12 +318,23 @@ const WIN_PHRASES_OTHER = [
   '👑 {name} takes the crown!',
 ];
 
-function getWinPhrase(winnerName: string, isMe: boolean): string {
+function playWinAudio(audioUrl: string) {
+  try {
+    const audio = new Audio(audioUrl);
+    audio.volume = 0.8;
+    audio.play().catch(() => {}); // silently fail if autoplay blocked
+  } catch {
+    // Audio not available
+  }
+}
+
+function getWinPhrase(winnerName: string, isMe: boolean): { text: string; audio: string | null } {
   if (isMe) {
-    return WIN_PHRASES_SELF[Math.floor(Math.random() * WIN_PHRASES_SELF.length)];
+    const phrase = WIN_PHRASES_SELF[Math.floor(Math.random() * WIN_PHRASES_SELF.length)];
+    return { text: phrase.text, audio: phrase.audio };
   }
   const template = WIN_PHRASES_OTHER[Math.floor(Math.random() * WIN_PHRASES_OTHER.length)];
-  return template.replace(/{name}/g, winnerName);
+  return { text: template.replace(/{name}/g, winnerName), audio: null };
 }
 
 // ===== Hand Stopwatch Component =====
@@ -466,8 +477,13 @@ export default function TwentyFourRoom() {
 
         conn.on('24GameWon', (winnerName: string, _stepsJson: string, scoresJson: string) => {
           const savedName = localStorage.getItem('sudoku_name') || '';
+          const phrase = getWinPhrase(winnerName, winnerName === savedName);
           setShowWin(winnerName);
-          setWinPhrase(getWinPhrase(winnerName, winnerName === savedName));
+          setWinPhrase(phrase.text);
+          if (phrase.audio) {
+            // Small delay so win sound plays first, then the voice
+            setTimeout(() => playWinAudio(phrase.audio!), 600);
+          }
           setHandClockRunning(false);
           const newScores = JSON.parse(scoresJson);
           setScores(newScores);
