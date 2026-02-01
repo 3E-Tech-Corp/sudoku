@@ -227,44 +227,46 @@ Write-Host "`n>> Checking for SSL certificate..." -ForegroundColor Yellow
 # Extract the parent domain for wildcard cert matching (e.g., games.synthia.bot -> *.synthia.bot)
 $domainParts = $Domain.Split('.')
 $cert = $null
+$certStoreName = "My"
+
+# Search both My and WebHosting certificate stores
+$certStores = @("My", "WebHosting")
 
 if ($domainParts.Length -ge 2) {
-    # Build list of wildcard patterns to search for
-    $wildcardPatterns = @()
+    # Build list of patterns to search for (in priority order)
+    $searchPatterns = @()
 
-    # *.parentdomain (e.g., *.synthia.bot, *.3eweb.com)
+    # 1. Exact domain match (e.g., games.synthia.bot)
+    $searchPatterns += $Domain
+
+    # 2. Wildcard for parent domain (e.g., *.synthia.bot)
     if ($domainParts.Length -ge 3) {
         $parentDomain = ($domainParts | Select-Object -Skip 1) -join '.'
-        $wildcardPatterns += "*.$parentDomain"
-    }
-    # Also check *.topleveldomain for 4+ part domains (e.g., *.bot)
-    $wildcardPatterns += "*.3eweb.com"  # Legacy fallback
-
-    Write-Host "   Searching for certs matching: $($wildcardPatterns -join ', ')" -ForegroundColor Gray
-
-    foreach ($pattern in $wildcardPatterns) {
-        $cert = Get-ChildItem Cert:\LocalMachine\My | Where-Object {
-            $_.Subject -match [regex]::Escape($pattern) -or
-            ($_.Extensions | Where-Object { $_.Oid.FriendlyName -eq "Subject Alternative Name" } |
-             ForEach-Object { $_.Format($false) }) -match [regex]::Escape($pattern)
-        } | Sort-Object NotAfter -Descending | Select-Object -First 1
-
-        if ($cert) {
-            Write-Host "   Found cert for $pattern : $($cert.Thumbprint.Substring(0,8))... (expires $($cert.NotAfter.ToString('yyyy-MM-dd')))" -ForegroundColor Green
-            break
-        }
+        $searchPatterns += "*.$parentDomain"
+        # 3. Base domain cert (e.g., synthia.bot — works with Cloudflare Full mode)
+        $searchPatterns += $parentDomain
     }
 
-    # Fallback: look for Cloudflare origin cert or any cert that covers this domain
-    if (!$cert) {
-        $cert = Get-ChildItem Cert:\LocalMachine\My | Where-Object {
-            $san = ($_.Extensions | Where-Object { $_.Oid.FriendlyName -eq "Subject Alternative Name" } |
-                    ForEach-Object { $_.Format($false) })
-            ($san -match [regex]::Escape($Domain)) -or ($_.Subject -match [regex]::Escape($Domain))
-        } | Sort-Object NotAfter -Descending | Select-Object -First 1
+    # 4. Legacy fallback
+    $searchPatterns += "*.3eweb.com"
 
-        if ($cert) {
-            Write-Host "   Found exact-match cert: $($cert.Thumbprint.Substring(0,8))..." -ForegroundColor Green
+    Write-Host "   Searching stores: $($certStores -join ', ')" -ForegroundColor Gray
+    Write-Host "   Searching for certs matching: $($searchPatterns -join ', ')" -ForegroundColor Gray
+
+    :outer foreach ($store in $certStores) {
+        foreach ($pattern in $searchPatterns) {
+            $escapedPattern = [regex]::Escape($pattern)
+            $cert = Get-ChildItem "Cert:\LocalMachine\$store" | Where-Object {
+                $_.Subject -match $escapedPattern -or
+                ($_.Extensions | Where-Object { $_.Oid.FriendlyName -eq "Subject Alternative Name" } |
+                 ForEach-Object { $_.Format($false) }) -match $escapedPattern
+            } | Sort-Object NotAfter -Descending | Select-Object -First 1
+
+            if ($cert) {
+                $certStoreName = $store
+                Write-Host "   Found cert for '$pattern' in $store store: $($cert.Thumbprint.Substring(0,8))... (expires $($cert.NotAfter.ToString('yyyy-MM-dd')))" -ForegroundColor Green
+                break outer
+            }
         }
     }
 }
@@ -275,9 +277,9 @@ if ($cert) {
         New-WebBinding -Name $SiteName -Protocol "https" -Port 443 -HostHeader $Domain -SslFlags 1
         # Assign the certificate
         $binding = Get-WebBinding -Name $SiteName -Protocol "https" -Port 443
-        $binding.AddSslCertificate($cert.Thumbprint, "My")
-        Write-Host "   HTTPS binding added with cert: $($cert.Thumbprint.Substring(0,8))..." -ForegroundColor Green
-        $summary += "Added HTTPS binding with SSL cert"
+        $binding.AddSslCertificate($cert.Thumbprint, $certStoreName)
+        Write-Host "   HTTPS binding added with cert from $certStoreName store: $($cert.Thumbprint.Substring(0,8))..." -ForegroundColor Green
+        $summary += "Added HTTPS binding with SSL cert (from $certStoreName store)"
     } else {
         Write-Host "   HTTPS binding already exists" -ForegroundColor Gray
     }
