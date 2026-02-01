@@ -287,7 +287,9 @@ export default function TwentyFourRoom() {
   const [cards, setCards] = useState<TwentyFourCard[]>([]);
   const [rows, setRows] = useState<RowState[]>([emptyRow(), emptyRow(), emptyRow()]);
   const [activeRow, setActiveRow] = useState(0);
-  const [usedCards, setUsedCards] = useState<Set<number>>(new Set()); // indices into available cards
+  // Track which source is placed in each slot: key = "row-card1" | "row-card2", value = source key
+  // Source keys: "card-0" .. "card-3" for original cards, "result-0" .. "result-2" for row results
+  const [placements, setPlacements] = useState<Record<string, string>>({});
   const [resultCards, setResultCards] = useState<Map<number, number>>(new Map()); // rowIndex -> result value
   const [handNumber, setHandNumber] = useState(1);
   const [scores, setScores] = useState<Record<string, number>>({});
@@ -297,32 +299,12 @@ export default function TwentyFourRoom() {
   const [selectingFor, setSelectingFor] = useState<'card1' | 'card2' | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Available numbers: original 4 cards + result cards from locked rows, minus used ones
-  const _getAvailableNumbers = useCallback((): { value: number; source: string; index: number }[] => {
-    const available: { value: number; source: string; index: number }[] = [];
-    cards.forEach((card, i) => {
-      if (!usedCards.has(i)) {
-        available.push({ value: card.number, source: 'card', index: i });
-      }
-    });
-    resultCards.forEach((value, rowIdx) => {
-      const isUsedInLaterRow = rows.some((r, rIdx) => rIdx > rowIdx && r.locked && (r.card1 === value || r.card2 === value));
-      const currentRow = rows[activeRow];
-      const isUsedInCurrent = currentRow && !currentRow.locked && (currentRow.card1 === value || currentRow.card2 === value);
-      if (!isUsedInLaterRow && !isUsedInCurrent) {
-        available.push({ value, source: 'result', index: 100 + rowIdx });
-      }
-    });
-    return available;
-  }, [cards, usedCards, resultCards, rows, activeRow]);
-  void _getAvailableNumbers; // suppress unused warning — available for future use
-
   // Reset game state for new hand
   const resetForNewHand = useCallback((newCards: TwentyFourCard[]) => {
     setCards(newCards);
     setRows([emptyRow(), emptyRow(), emptyRow()]);
     setActiveRow(0);
-    setUsedCards(new Set());
+    setPlacements({});
     setResultCards(new Map());
     setSelectingFor(null);
     setErrorMsg('');
@@ -492,7 +474,7 @@ export default function TwentyFourRoom() {
   };
 
   // Place a number into the current row
-  const placeNumber = useCallback((value: number, sourceIndex: number) => {
+  const placeNumber = useCallback((value: number, sourceKey: string) => {
     if (faceDown || !selectingFor) return;
 
     const row = rows[activeRow];
@@ -502,15 +484,16 @@ export default function TwentyFourRoom() {
     const newRow = { ...row };
 
     if (selectingFor === 'card1') {
-      if (newRow.card1 !== null) return; // already filled
+      if (newRow.card1 !== null) return;
       newRow.card1 = value;
     } else if (selectingFor === 'card2') {
       if (newRow.card2 !== null) return;
       newRow.card2 = value;
     }
 
-    // Mark source card as used
-    setUsedCards((prev) => new Set(prev).add(sourceIndex));
+    // Track which source is placed in this slot
+    const slotKey = `${activeRow}-${selectingFor}`;
+    setPlacements((prev) => ({ ...prev, [slotKey]: sourceKey }));
 
     // Auto-calculate result when both cards and operator are filled
     if (newRow.card1 !== null && newRow.card2 !== null && newRow.operator !== null) {
@@ -610,26 +593,23 @@ export default function TwentyFourRoom() {
     const row = rows[activeRow];
     if (row.locked) return;
 
-    // Clear the row and rebuild used set from locked rows
+    // Clear the row
     const newRows = [...rows];
     newRows[activeRow] = emptyRow();
     setRows(newRows);
 
-    // Rebuild usedCards from locked rows only
-    rebuildUsedCards(newRows);
+    // Remove placements for this row
+    setPlacements((prev) => {
+      const newP = { ...prev };
+      delete newP[`${activeRow}-card1`];
+      delete newP[`${activeRow}-card2`];
+      return newP;
+    });
+
     setSelectingFor(null);
     setErrorMsg('');
     sounds.undo();
   }, [rows, activeRow]);
-
-  // Track which original card indices are used
-  const usedCardTracker = useRef<Map<number, number[]>>(new Map()); // rowIndex -> [cardIndices used]
-
-  const rebuildUsedCards = useCallback((_rows: RowState[]) => {
-    // For now, just clear — the card selection tracking handles it
-    setUsedCards(new Set());
-    usedCardTracker.current.clear();
-  }, []);
 
   // Skip hand
   const skipHand = useCallback(() => {
@@ -640,26 +620,35 @@ export default function TwentyFourRoom() {
 
   // Handle slot click in equation row
   const handleSlotClick = useCallback((slot: 'card1' | 'operator' | 'card2') => {
-    if (slot === 'operator') {
-      // Don't set selectingFor, operator buttons handle it directly
-      return;
-    }
+    if (slot === 'operator') return; // operator buttons handle directly
 
     const row = rows[activeRow];
-    // If slot already has a value, remove it (undo)
+    // If slot already has a value, remove it
     if (slot === 'card1' && row.card1 !== null) {
       const newRows = [...rows];
       newRows[activeRow] = { ...row, card1: null, result: null };
       setRows(newRows);
-      // TODO: return the card to available
+      // Remove placement tracking for this slot
+      setPlacements((prev) => {
+        const newP = { ...prev };
+        delete newP[`${activeRow}-card1`];
+        return newP;
+      });
       setSelectingFor(null);
+      sounds.undo();
       return;
     }
     if (slot === 'card2' && row.card2 !== null) {
       const newRows = [...rows];
       newRows[activeRow] = { ...row, card2: null, result: null };
       setRows(newRows);
+      setPlacements((prev) => {
+        const newP = { ...prev };
+        delete newP[`${activeRow}-card2`];
+        return newP;
+      });
       setSelectingFor(null);
+      sounds.undo();
       return;
     }
 
@@ -730,61 +719,8 @@ export default function TwentyFourRoom() {
   const currentRow = rows[activeRow];
   const canLock = currentRow && currentRow.card1 !== null && currentRow.card2 !== null && currentRow.operator !== null && currentRow.result !== null && !currentRow.locked;
 
-  // Build available cards list for selection
-  const _availableForSelection: { value: number; suit: string; index: number; isResult: boolean }[] = [];
-  cards.forEach((card, i) => {
-    _availableForSelection.push({
-      value: card.number,
-      suit: card.suit,
-      index: i,
-      isResult: false,
-    });
-  });
-
-  // Figure out which card indices are "consumed" by locked rows
-  // We need proper tracking — let's use a different approach
-  // Track cards placed in each row
-  const getCardUsageMap = (): Set<string> => {
-    const used = new Set<string>();
-    rows.forEach((row, rIdx) => {
-      if (row.locked || rIdx === activeRow) {
-        // For locked rows and current row, mark the cards as used
-        if (row.card1 !== null) {
-          // Find the first unused card index with this value
-          for (let i = 0; i < cards.length; i++) {
-            const key = `card-${i}`;
-            if (!used.has(key) && cards[i].number === row.card1) {
-              used.add(key);
-              break;
-            }
-          }
-          // Also check result cards
-          resultCards.forEach((val, resultRow) => {
-            if (val === row.card1 && resultRow < rIdx) {
-              used.add(`result-${resultRow}`);
-            }
-          });
-        }
-        if (row.card2 !== null) {
-          for (let i = 0; i < cards.length; i++) {
-            const key = `card-${i}`;
-            if (!used.has(key) && cards[i].number === row.card2) {
-              used.add(key);
-              break;
-            }
-          }
-          resultCards.forEach((val, resultRow) => {
-            if (val === row.card2 && resultRow < rIdx) {
-              used.add(`result-${resultRow}`);
-            }
-          });
-        }
-      }
-    });
-    return used;
-  };
-
-  const cardUsage = getCardUsageMap();
+  // Derive which source keys are currently in use from placements
+  const usedSourceKeys = new Set(Object.values(placements));
 
   return (
     <div className="min-h-screen bg-gray-900">
@@ -845,7 +781,7 @@ export default function TwentyFourRoom() {
             {/* Dealt cards */}
             <div className="flex justify-center gap-3 sm:gap-4 mb-6">
               {cards.map((card, i) => {
-                const isUsed = cardUsage.has(`card-${i}`);
+                const isUsed = usedSourceKeys.has(`card-${i}`);
                 return (
                   <div
                     key={`${i}-${card.number}-${card.suit}`}
@@ -859,7 +795,7 @@ export default function TwentyFourRoom() {
                       faceDown={faceDown}
                       onClick={() => {
                         if (selectingFor && !isUsed) {
-                          placeNumber(card.number, i);
+                          placeNumber(card.number, `card-${i}`);
                         }
                       }}
                     />
@@ -872,7 +808,7 @@ export default function TwentyFourRoom() {
             {resultCards.size > 0 && (
               <div className="flex justify-center gap-3 mb-4">
                 {Array.from(resultCards.entries()).map(([rowIdx, value]) => {
-                  const isUsed = cardUsage.has(`result-${rowIdx}`);
+                  const isUsed = usedSourceKeys.has(`result-${rowIdx}`);
                   return (
                     <PlayingCard
                       key={`result-${rowIdx}`}
@@ -881,7 +817,7 @@ export default function TwentyFourRoom() {
                       used={isUsed && !selectingFor}
                       onClick={() => {
                         if (selectingFor && !isUsed) {
-                          placeNumber(value, 100 + rowIdx);
+                          placeNumber(value, `result-${rowIdx}`);
                         }
                       }}
                     />
@@ -946,7 +882,7 @@ export default function TwentyFourRoom() {
                   // Full reset
                   setRows([emptyRow(), emptyRow(), emptyRow()]);
                   setActiveRow(0);
-                  setUsedCards(new Set());
+                  setPlacements({});
                   setResultCards(new Map());
                   setSelectingFor(null);
                   setErrorMsg('');
