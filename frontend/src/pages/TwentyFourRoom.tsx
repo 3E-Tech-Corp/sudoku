@@ -282,6 +282,50 @@ function EquationRow({
   );
 }
 
+// ===== Encouraging phrases =====
+
+const WIN_PHRASES_SELF = [
+  '🔥 Nicely done!',
+  '⚡ Excellent!',
+  '🧠 Brilliant mind!',
+  '💪 You crushed it!',
+  '🎯 Sharp as a tack!',
+  '👏 Masterful!',
+  '✨ Pure genius!',
+  '🏅 Math wizard!',
+  '💎 Flawless!',
+  '🚀 Unstoppable!',
+  '🎉 Nailed it!',
+  '😎 Too easy for you!',
+  '🌟 Spectacular!',
+  '🧮 Calculator who?',
+  '👑 Crown yourself!',
+];
+
+const WIN_PHRASES_OTHER = [
+  '🔥 Nicely done, {name}!',
+  '⚡ {name} is on fire!',
+  '🧠 Big brain move by {name}!',
+  '💪 {name} crushed it!',
+  '🎯 {name} strikes again!',
+  '👏 Well played, {name}!',
+  '✨ {name} makes it look easy!',
+  '🏅 {name} the math wizard!',
+  '💎 Flawless by {name}!',
+  '🚀 {name} is unstoppable!',
+  '🎉 {name} nailed it!',
+  '🌟 Spectacular, {name}!',
+  '👑 {name} takes the crown!',
+];
+
+function getWinPhrase(winnerName: string, isMe: boolean): string {
+  if (isMe) {
+    return WIN_PHRASES_SELF[Math.floor(Math.random() * WIN_PHRASES_SELF.length)];
+  }
+  const template = WIN_PHRASES_OTHER[Math.floor(Math.random() * WIN_PHRASES_OTHER.length)];
+  return template.replace(/{name}/g, winnerName);
+}
+
 // ===== Hand Stopwatch Component =====
 
 function HandStopwatch({ running, resetKey }: { running: boolean; resetKey: number }) {
@@ -346,6 +390,7 @@ export default function TwentyFourRoom() {
   const [handNumber, setHandNumber] = useState(1);
   const [scores, setScores] = useState<Record<string, number>>({});
   const [showWin, setShowWin] = useState<string | null>(null);
+  const [winPhrase, setWinPhrase] = useState('');
   const [dealing, setDealing] = useState(false);
   const [faceDown, setFaceDown] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
@@ -420,7 +465,9 @@ export default function TwentyFourRoom() {
         });
 
         conn.on('24GameWon', (winnerName: string, _stepsJson: string, scoresJson: string) => {
+          const savedName = localStorage.getItem('sudoku_name') || '';
           setShowWin(winnerName);
+          setWinPhrase(getWinPhrase(winnerName, winnerName === savedName));
           setHandClockRunning(false);
           const newScores = JSON.parse(scoresJson);
           setScores(newScores);
@@ -748,12 +795,17 @@ export default function TwentyFourRoom() {
       {/* Win Banner */}
       {showWin && (
         <div className="bg-gradient-to-r from-yellow-900/50 via-amber-900/50 to-yellow-900/50 border-b border-yellow-700/50 px-4 py-4">
-          <div className="max-w-5xl mx-auto text-center">
-            <span className="text-3xl">🏆</span>
-            <span className="text-yellow-300 font-bold text-xl ml-2">
-              {showWin === myName ? 'You made 24!' : `${showWin} made 24!`}
-            </span>
-            <span className="text-3xl ml-2">🎉</span>
+          <div className="max-w-5xl mx-auto text-center space-y-1">
+            <div>
+              <span className="text-3xl">🏆</span>
+              <span className="text-yellow-300 font-bold text-xl ml-2">
+                {showWin === myName ? 'You made 24!' : `${showWin} made 24!`}
+              </span>
+              <span className="text-3xl ml-2">🏆</span>
+            </div>
+            <div className="text-amber-200/90 text-lg font-medium animate-bounce">
+              {winPhrase}
+            </div>
           </div>
         </div>
       )}
