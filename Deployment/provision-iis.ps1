@@ -221,15 +221,53 @@ if (!(Get-Website -Name $SiteName -ErrorAction SilentlyContinue)) {
     Write-Host "   Site exists: $SiteName" -ForegroundColor Gray
 }
 
-# - 7. Add HTTPS binding if wildcard cert is available -------------
+# - 7. Add HTTPS binding if SSL cert is available -------------
 Write-Host "`n>> Checking for SSL certificate..." -ForegroundColor Yellow
 
-$certDomain = "*.3eweb.com"
-$cert = Get-ChildItem Cert:\LocalMachine\My | Where-Object {
-    $_.Subject -match [regex]::Escape($certDomain) -or
-    ($_.Extensions | Where-Object { $_.Oid.FriendlyName -eq "Subject Alternative Name" } |
-     ForEach-Object { $_.Format($false) }) -match [regex]::Escape($certDomain)
-} | Sort-Object NotAfter -Descending | Select-Object -First 1
+# Extract the parent domain for wildcard cert matching (e.g., games.synthia.bot -> *.synthia.bot)
+$domainParts = $Domain.Split('.')
+$cert = $null
+
+if ($domainParts.Length -ge 2) {
+    # Build list of wildcard patterns to search for
+    $wildcardPatterns = @()
+
+    # *.parentdomain (e.g., *.synthia.bot, *.3eweb.com)
+    if ($domainParts.Length -ge 3) {
+        $parentDomain = ($domainParts | Select-Object -Skip 1) -join '.'
+        $wildcardPatterns += "*.$parentDomain"
+    }
+    # Also check *.topleveldomain for 4+ part domains (e.g., *.bot)
+    $wildcardPatterns += "*.3eweb.com"  # Legacy fallback
+
+    Write-Host "   Searching for certs matching: $($wildcardPatterns -join ', ')" -ForegroundColor Gray
+
+    foreach ($pattern in $wildcardPatterns) {
+        $cert = Get-ChildItem Cert:\LocalMachine\My | Where-Object {
+            $_.Subject -match [regex]::Escape($pattern) -or
+            ($_.Extensions | Where-Object { $_.Oid.FriendlyName -eq "Subject Alternative Name" } |
+             ForEach-Object { $_.Format($false) }) -match [regex]::Escape($pattern)
+        } | Sort-Object NotAfter -Descending | Select-Object -First 1
+
+        if ($cert) {
+            Write-Host "   Found cert for $pattern : $($cert.Thumbprint.Substring(0,8))... (expires $($cert.NotAfter.ToString('yyyy-MM-dd')))" -ForegroundColor Green
+            break
+        }
+    }
+
+    # Fallback: look for Cloudflare origin cert or any cert that covers this domain
+    if (!$cert) {
+        $cert = Get-ChildItem Cert:\LocalMachine\My | Where-Object {
+            $san = ($_.Extensions | Where-Object { $_.Oid.FriendlyName -eq "Subject Alternative Name" } |
+                    ForEach-Object { $_.Format($false) })
+            ($san -match [regex]::Escape($Domain)) -or ($_.Subject -match [regex]::Escape($Domain))
+        } | Sort-Object NotAfter -Descending | Select-Object -First 1
+
+        if ($cert) {
+            Write-Host "   Found exact-match cert: $($cert.Thumbprint.Substring(0,8))..." -ForegroundColor Green
+        }
+    }
+}
 
 if ($cert) {
     $existingHttps = Get-WebBinding -Name $SiteName -Protocol "https" -ErrorAction SilentlyContinue
@@ -239,12 +277,13 @@ if ($cert) {
         $binding = Get-WebBinding -Name $SiteName -Protocol "https" -Port 443
         $binding.AddSslCertificate($cert.Thumbprint, "My")
         Write-Host "   HTTPS binding added with cert: $($cert.Thumbprint.Substring(0,8))..." -ForegroundColor Green
-        $summary += "Added HTTPS binding with wildcard cert"
+        $summary += "Added HTTPS binding with SSL cert"
     } else {
         Write-Host "   HTTPS binding already exists" -ForegroundColor Gray
     }
 } else {
-    Write-Host "   No wildcard cert found for $certDomain - HTTP only" -ForegroundColor Yellow
+    Write-Host "   No matching SSL cert found - HTTP only" -ForegroundColor Yellow
+    Write-Host "   Searched for wildcards and exact match for: $Domain" -ForegroundColor Yellow
     $summary += "No SSL cert found - HTTP only (add manually later)"
 }
 
