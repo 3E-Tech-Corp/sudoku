@@ -5,6 +5,8 @@ import { startGameConnection, stopGameConnection } from '../services/signalr';
 import { sounds } from '../services/sounds';
 import VideoChat from '../components/VideoChat';
 import GameTimer from '../components/GameTimer';
+import DeckPicker from '../components/DeckPicker';
+import { getSavedThemeId, saveThemeId, getThemeById, type DeckTheme } from '../config/deckThemes';
 import confetti from 'canvas-confetti';
 import type { HubConnection } from '@microsoft/signalr';
 
@@ -75,27 +77,6 @@ function emptyRow(): RowState {
 
 // ===== Card Visual Component =====
 
-// Map card data to SVG filenames from saulspatz/SVGCards deck
-function getCardImagePath(card: { number: number; suit: string }): string {
-  const suitMap: Record<string, string> = {
-    Hearts: 'heart',
-    Diamonds: 'diamond',
-    Clubs: 'club',
-    Spades: 'spade',
-  };
-  const suitPrefix = suitMap[card.suit];
-  if (!suitPrefix) return ''; // Results or unknown suit
-
-  const faceMap: Record<number, string> = {
-    1: 'Ace',
-    11: 'Jack',
-    12: 'Queen',
-    13: 'King',
-  };
-  const face = faceMap[card.number] ?? String(card.number);
-  return `/cards/${suitPrefix}${face}.svg`;
-}
-
 function PlayingCard({
   card,
   selected,
@@ -104,6 +85,7 @@ function PlayingCard({
   onClick,
   animDelay,
   faceDown,
+  theme,
 }: {
   card: TwentyFourCard | { number: number; suit: string };
   selected?: boolean;
@@ -112,10 +94,10 @@ function PlayingCard({
   onClick?: () => void;
   animDelay?: number;
   faceDown?: boolean;
+  theme: DeckTheme;
 }) {
   const isRealCard = card.suit === 'Hearts' || card.suit === 'Diamonds' || card.suit === 'Clubs' || card.suit === 'Spades';
 
-  // For result cards, keep showing the number + suit symbol
   const isRed = card.suit === 'Hearts' || card.suit === 'Diamonds';
   const suitSymbol =
     card.suit === 'Hearts' ? '♥' :
@@ -129,6 +111,8 @@ function PlayingCard({
     card.number === 12 ? 'Q' :
     card.number === 13 ? 'K' :
     String(card.number);
+
+  const imgStyle: React.CSSProperties = theme.imgFilter ? { filter: theme.imgFilter } : {};
 
   return (
     <button
@@ -151,17 +135,19 @@ function PlayingCard({
     >
       {faceDown ? (
         <img
-          src="/cards/blueBack.svg"
+          src={theme.backUrl}
           alt="Card back"
           className="w-full h-full object-fill rounded-xl"
+          style={imgStyle}
           draggable={false}
         />
       ) : isRealCard ? (
         <>
           <img
-            src={getCardImagePath(card)}
+            src={theme.cardUrl(card.number, card.suit)}
             alt={`${displayNum} of ${card.suit}`}
             className="w-full h-full object-fill rounded-lg"
+            style={imgStyle}
             draggable={false}
           />
           {isResult && (
@@ -190,7 +176,7 @@ function PlayingCard({
   );
 }
 
-// ===== Operator Button =====
+// ===== Operator Button (large, touch-friendly) =====
 
 function OperatorButton({
   op,
@@ -206,9 +192,9 @@ function OperatorButton({
     <button
       onClick={onClick}
       className={`
-        w-12 h-12 sm:w-14 sm:h-14 rounded-xl text-xl sm:text-2xl font-bold transition-all
+        min-w-[48px] min-h-[48px] w-14 h-14 sm:w-16 sm:h-16 rounded-2xl text-2xl sm:text-3xl font-bold transition-all
         ${selected
-          ? 'bg-purple-600 text-white border-2 border-purple-400 shadow-[0_0_10px_rgba(147,51,234,0.4)]'
+          ? 'bg-purple-600 text-white border-2 border-purple-400 shadow-[0_0_12px_rgba(147,51,234,0.5)] scale-105'
           : 'bg-gray-700 text-gray-200 border-2 border-gray-600 hover:bg-purple-900/50 hover:border-purple-500 active:scale-95'
         }
       `}
@@ -218,7 +204,7 @@ function OperatorButton({
   );
 }
 
-// ===== Equation Row Component =====
+// ===== Equation Row Component (operator as display-only field) =====
 
 function EquationRow({
   row,
@@ -229,7 +215,7 @@ function EquationRow({
   row: RowState;
   rowIndex: number;
   isActive: boolean;
-  onSlotClick: (slot: 'card1' | 'operator' | 'card2') => void;
+  onSlotClick: (slot: 'card1' | 'card2') => void;
 }) {
   const opDisplay = row.operator === '*' ? '×' : row.operator === '/' ? '÷' : row.operator;
   const isFinal = rowIndex === 2;
@@ -263,22 +249,20 @@ function EquationRow({
         {row.card1 !== null ? row.card1 : '?'}
       </button>
 
-      {/* Operator slot */}
-      <button
-        onClick={() => !row.locked && isActive && onSlotClick('operator')}
-        disabled={row.locked || !isActive}
+      {/* Operator slot — display only (filled by operator buttons above) */}
+      <div
         className={`
-          w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-xl font-bold transition-all
+          w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-xl font-bold
           ${row.operator
             ? 'bg-purple-600 text-white border-2 border-purple-400'
             : isActive
-            ? 'bg-gray-600 border-2 border-dashed border-gray-500 text-gray-400 hover:border-purple-400'
+            ? 'bg-gray-600 border-2 border-dashed border-gray-500 text-gray-400'
             : 'bg-gray-700 border-2 border-dashed border-gray-600 text-gray-500'
           }
         `}
       >
         {opDisplay || '⊕'}
-      </button>
+      </div>
 
       {/* Card 2 slot */}
       <button
@@ -329,6 +313,14 @@ export default function TwentyFourRoom() {
   const [nameInput, setNameInput] = useState('');
   const [error, setError] = useState('');
   const connRef = useRef<HubConnection | null>(null);
+
+  // Deck theme
+  const [deckThemeId, setDeckThemeId] = useState(getSavedThemeId);
+  const deckTheme = getThemeById(deckThemeId);
+  const handleThemeChange = useCallback((id: string) => {
+    setDeckThemeId(id);
+    saveThemeId(id);
+  }, []);
 
   // Game state
   const [cards, setCards] = useState<TwentyFourCard[]>([]);
@@ -667,9 +659,7 @@ export default function TwentyFourRoom() {
   }, [code, myName]);
 
   // Handle slot click in equation row
-  const handleSlotClick = useCallback((slot: 'card1' | 'operator' | 'card2') => {
-    if (slot === 'operator') return; // operator buttons handle directly
-
+  const handleSlotClick = useCallback((slot: 'card1' | 'card2') => {
     const row = rows[activeRow];
     // If slot already has a value, remove it
     if (slot === 'card1' && row.card1 !== null) {
@@ -787,6 +777,7 @@ export default function TwentyFourRoom() {
             )}
           </h1>
           <div className="flex items-center gap-3">
+            <DeckPicker currentThemeId={deckThemeId} onChange={handleThemeChange} />
             <VideoChat
               connection={connRef.current}
               roomCode={code || ''}
@@ -814,7 +805,6 @@ export default function TwentyFourRoom() {
         </div>
       )}
 
-      {/* Error message */}
       {/* Timer Expired Banner */}
       {timerExpired && !showWin && (
         <div className="bg-gradient-to-r from-red-900/50 via-red-800/50 to-red-900/50 border-b border-red-700/50 px-4 py-3">
@@ -825,6 +815,7 @@ export default function TwentyFourRoom() {
         </div>
       )}
 
+      {/* Error message */}
       {errorMsg && (
         <div className="bg-red-900/50 border-b border-red-700/50 px-4 py-2">
           <div className="max-w-5xl mx-auto text-center text-red-300 text-sm">{errorMsg}</div>
@@ -842,8 +833,8 @@ export default function TwentyFourRoom() {
               <span className="text-gray-500 text-sm">Room: <span className="font-mono text-blue-400">{room.code}</span></span>
             </div>
 
-            {/* Dealt cards */}
-            <div className="flex justify-center gap-3 sm:gap-4 mb-6">
+            {/* 1. Dealt cards at the top */}
+            <div className="flex justify-center gap-3 sm:gap-4 mb-4">
               {cards.map((card, i) => {
                 const isUsed = usedSourceKeys.has(`card-${i}`);
                 return (
@@ -857,6 +848,7 @@ export default function TwentyFourRoom() {
                       used={isUsed && !selectingFor}
                       selected={false}
                       faceDown={faceDown}
+                      theme={deckTheme}
                       onClick={() => {
                         if (selectingFor && !isUsed) {
                           placeNumber(card.number, `card-${i}`);
@@ -879,6 +871,7 @@ export default function TwentyFourRoom() {
                       card={{ number: value, suit: 'Results' }}
                       isResult
                       used={isUsed && !selectingFor}
+                      theme={deckTheme}
                       onClick={() => {
                         if (selectingFor && !isUsed) {
                           placeNumber(value, `result-${rowIdx}`);
@@ -899,7 +892,19 @@ export default function TwentyFourRoom() {
               </div>
             )}
 
-            {/* Equation rows */}
+            {/* 2. Operator buttons — large, touch-friendly, always visible */}
+            <div className="flex justify-center gap-4 mb-5">
+              {['+', '-', '*', '/'].map((op) => (
+                <OperatorButton
+                  key={op}
+                  op={op}
+                  selected={rows[activeRow]?.operator === op}
+                  onClick={() => placeOperator(op)}
+                />
+              ))}
+            </div>
+
+            {/* 3. Equation rows */}
             <div className="space-y-3 mb-6">
               {rows.map((row, i) => (
                 <EquationRow
@@ -908,18 +913,6 @@ export default function TwentyFourRoom() {
                   rowIndex={i}
                   isActive={i === activeRow && !showWin && !timerExpired}
                   onSlotClick={handleSlotClick}
-                />
-              ))}
-            </div>
-
-            {/* Operator buttons */}
-            <div className="flex justify-center gap-3 mb-4">
-              {['+', '-', '*', '/'].map((op) => (
-                <OperatorButton
-                  key={op}
-                  op={op}
-                  selected={rows[activeRow]?.operator === op}
-                  onClick={() => placeOperator(op)}
                 />
               ))}
             </div>
