@@ -100,6 +100,8 @@ public class RoomResponse
     public TwentyFourGameState? TwentyFourState { get; set; }
     // Blackjack-specific fields
     public BlackjackGameState? BlackjackState { get; set; }
+    // Chess-specific fields
+    public ChessStateResponse? ChessState { get; set; }
 }
 
 public class PublicRoomResponse
@@ -240,4 +242,38 @@ public class Complete24RowRequest
 public class Win24GameRequest
 {
     public List<TwentyFourStep> Steps { get; set; } = [];
+}
+
+// ========== Chess Game Models ==========
+
+public class ChessGameState
+{
+    public int Id { get; set; }
+    public int RoomId { get; set; }
+    public string Fen { get; set; } = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+    public string MoveHistoryJson { get; set; } = "[]";
+    public string? WhitePlayer { get; set; }
+    public string? BlackPlayer { get; set; }
+    public string Status { get; set; } = "Waiting"; // Waiting, Playing, Check, Checkmate, Stalemate, Draw, WhiteWins, BlackWins
+    public string CurrentTurn { get; set; } = "White"; // White, Black
+    public string CapturedJson { get; set; } = "{\"white\":[],\"black\":[]}";
+    public string? DrawOfferFrom { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+public class ChessStateResponse
+{
+    public int Id { get; set; }
+    public int RoomId { get; set; }
+    public string Fen { get; set; } = "";
+    public string[][] Board { get; set; } = [];
+    public List<string> MoveHistory { get; set; } = [];
+    public string? WhitePlayer { get; set; }
+    public string? BlackPlayer { get; set; }
+    public string Status { get; set; } = "Waiting";
+    public string CurrentTurn { get; set; } = "White";
+    public List<string> CapturedWhite { get; set; } = [];
+    public List<string> CapturedBlack { get; set; } = [];
+    public Dictionary<string, List<string>> LegalMoves { get; set; } = [];
+    public string? DrawOfferFrom { get; set; }
 }

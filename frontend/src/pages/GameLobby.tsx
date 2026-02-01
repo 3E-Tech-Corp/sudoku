@@ -26,6 +26,7 @@ const GAME_CONFIG: Record<string, {
   accentBg: string;
   buttonClass: string;
   hasDifficulty: boolean;
+  hasMode?: boolean;
   tagline: string;
 }> = {
   sudoku: {
@@ -57,6 +58,17 @@ const GAME_CONFIG: Record<string, {
     buttonClass: 'bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-800',
     hasDifficulty: false,
     tagline: 'Beat the dealer — get to 21 without going over!',
+  },
+  chess: {
+    apiGameType: 'Chess',
+    name: 'Chess',
+    icon: '♟️',
+    accent: 'text-slate-400',
+    accentBg: 'bg-slate-600',
+    buttonClass: 'bg-slate-600 hover:bg-slate-700 disabled:bg-slate-800',
+    hasDifficulty: false,
+    hasMode: false,
+    tagline: 'The ultimate game of strategy — checkmate your opponent!',
   },
 };
 
@@ -274,6 +286,7 @@ export default function GameLobby() {
                 </div>
               )}
 
+              {config.hasMode !== false && (
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">Mode</label>
                 <div className="grid grid-cols-2 gap-2">
@@ -307,6 +320,7 @@ export default function GameLobby() {
                   ))}
                 </div>
               </div>
+              )}
 
               {/* Time Limit (competitive only) */}
               {mode === 'Competitive' && (

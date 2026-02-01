@@ -91,6 +91,7 @@ builder.Services.AddSingleton<AuthService>();
 builder.Services.AddSingleton<SudokuGenerator>();
 builder.Services.AddScoped<TwentyFourService>();
 builder.Services.AddScoped<BlackjackService>();
+builder.Services.AddScoped<ChessService>();
 builder.Services.AddScoped<RoomService>();
 builder.Services.AddHostedService<RoomCleanupService>();
 
@@ -244,6 +245,25 @@ using (var scope = app.Services.CreateScope())
                         Phase NVARCHAR(20) NOT NULL DEFAULT 'Betting',
                         CurrentPlayerIndex INT NOT NULL DEFAULT 0,
                         PlayersJson NVARCHAR(MAX) NOT NULL DEFAULT '[]',
+                        CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+                    );
+                END");
+
+            // ChessGameStates table
+            await conn.ExecuteAsync(@"
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ChessGameStates')
+                BEGIN
+                    CREATE TABLE ChessGameStates (
+                        Id INT IDENTITY(1,1) PRIMARY KEY,
+                        RoomId INT NOT NULL,
+                        Fen NVARCHAR(MAX) NOT NULL,
+                        MoveHistoryJson NVARCHAR(MAX) NOT NULL DEFAULT '[]',
+                        WhitePlayer NVARCHAR(100) NULL,
+                        BlackPlayer NVARCHAR(100) NULL,
+                        Status NVARCHAR(20) NOT NULL DEFAULT 'Waiting',
+                        CurrentTurn NVARCHAR(10) NOT NULL DEFAULT 'White',
+                        CapturedJson NVARCHAR(MAX) NOT NULL DEFAULT '{""white"":[],""black"":[]}',
+                        DrawOfferFrom NVARCHAR(100) NULL,
                         CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
                     );
                 END");

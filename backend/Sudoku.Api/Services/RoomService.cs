@@ -24,14 +24,16 @@ public class RoomService
 
     private readonly TwentyFourService _twentyFourService;
     private readonly BlackjackService _blackjackService;
+    private readonly ChessService _chessService;
 
-    public RoomService(IConfiguration config, SudokuGenerator generator, TwentyFourService twentyFourService, BlackjackService blackjackService)
+    public RoomService(IConfiguration config, SudokuGenerator generator, TwentyFourService twentyFourService, BlackjackService blackjackService, ChessService chessService)
     {
         _connectionString = config.GetConnectionString("DefaultConnection")
             ?? throw new InvalidOperationException("No connection string");
         _generator = generator;
         _twentyFourService = twentyFourService;
         _blackjackService = blackjackService;
+        _chessService = chessService;
     }
 
     private SqlConnection GetConnection() => new(_connectionString);
@@ -48,6 +50,7 @@ public class RoomService
         {
             "TwentyFour" => "TwentyFour",
             "Blackjack" => "Blackjack",
+            "Chess" => "Chess",
             _ => "Sudoku"
         };
         var code = GenerateCode();
@@ -64,9 +67,9 @@ public class RoomService
         int puzzleId;
         string puzzleJson;
 
-        if (gameType == "TwentyFour" || gameType == "Blackjack")
+        if (gameType == "TwentyFour" || gameType == "Blackjack" || gameType == "Chess")
         {
-            // For card games, create a dummy puzzle entry (no board needed)
+            // For card/board games, create a dummy puzzle entry (no board needed)
             puzzleJson = "[]";
             puzzleId = await conn.QuerySingleAsync<int>(@"
                 INSERT INTO SudokuPuzzles (Difficulty, InitialBoard, Solution)
@@ -102,7 +105,7 @@ public class RoomService
                 Code = code,
                 PuzzleId = puzzleId,
                 request.HostName,
-                Difficulty = (gameType == "TwentyFour" || gameType == "Blackjack") ? "N/A" : request.Difficulty,
+                Difficulty = (gameType == "TwentyFour" || gameType == "Blackjack" || gameType == "Chess") ? "N/A" : request.Difficulty,
                 CurrentBoard = puzzleJson,
                 PlayerColors = JsonSerializer.Serialize(initialColors),
                 request.IsPublic,
@@ -135,6 +138,13 @@ public class RoomService
             if (gameType == "Blackjack")
             {
                 await _blackjackService.InitializeGame(room.Id);
+            }
+
+            // Initialize chess game state
+            if (gameType == "Chess")
+            {
+                var chessState = await _chessService.InitializeGame(room.Id);
+                await _chessService.AssignPlayer(room.Id, request.HostName);
             }
         }
 
@@ -237,6 +247,38 @@ public class RoomService
                 CreatedAt = room.CreatedAt,
                 CompletedAt = room.CompletedAt,
                 BlackjackState = bjState
+            };
+        }
+
+        // Handle Chess game type
+        if (room.GameType == "Chess")
+        {
+            var chessState = await _chessService.GetGameState(room.Id);
+            ChessStateResponse? chessResponse = null;
+            if (chessState != null)
+            {
+                chessResponse = _chessService.ToResponse(chessState);
+            }
+            return new RoomResponse
+            {
+                Code = room.Code,
+                Difficulty = "N/A",
+                Status = room.Status,
+                HostName = room.HostName,
+                Mode = room.Mode,
+                GameType = room.GameType,
+                TimeLimitSeconds = room.TimeLimitSeconds,
+                StartedAt = room.StartedAt,
+                InitialBoard = [],
+                CurrentBoard = [],
+                Solution = [],
+                Members = memberResponses,
+                PlayerColors = playerColors,
+                Notes = new(),
+                IsPublic = room.IsPublic,
+                CreatedAt = room.CreatedAt,
+                CompletedAt = room.CompletedAt,
+                ChessState = chessResponse
             };
         }
 
@@ -396,6 +438,12 @@ public class RoomService
         if (room.GameType == "Blackjack")
         {
             await _blackjackService.EnsurePlayerInGame(room.Id, request.DisplayName);
+        }
+
+        // Assign player color in chess game
+        if (room.GameType == "Chess")
+        {
+            await _chessService.AssignPlayer(room.Id, request.DisplayName);
         }
 
         var roomResponse = await GetRoom(code, request.DisplayName);

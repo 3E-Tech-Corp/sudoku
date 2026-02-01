@@ -11,6 +11,7 @@ public class GameHub : Hub
     private readonly RoomService _roomService;
     private readonly TwentyFourService _twentyFourService;
     private readonly BlackjackService _blackjackService;
+    private readonly ChessService _chessService;
 
     private static readonly JsonSerializerOptions _jsonOpts = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
@@ -20,11 +21,12 @@ public class GameHub : Hub
     // Track rooms where host has left: roomCode → (hostName, leftAt)
     private static readonly ConcurrentDictionary<string, (string HostName, DateTime LeftAt)> _hostLeftTimers = new();
 
-    public GameHub(RoomService roomService, TwentyFourService twentyFourService, BlackjackService blackjackService)
+    public GameHub(RoomService roomService, TwentyFourService twentyFourService, BlackjackService blackjackService, ChessService chessService)
     {
         _roomService = roomService;
         _twentyFourService = twentyFourService;
         _blackjackService = blackjackService;
+        _chessService = chessService;
     }
 
     /// <summary>Get all room codes that have at least one connected player.</summary>
@@ -606,5 +608,74 @@ public class GameHub : Hub
             .ToList();
 
         await Clients.Caller.SendAsync("PeerList", JsonSerializer.Serialize(peers, _jsonOpts));
+    }
+
+    // ==================== Chess methods ====================
+
+    public async Task ChessMakeMove(string code, string player, string from, string to, string? promotion)
+    {
+        code = code.ToUpper();
+        var room = await _roomService.GetRoomByCode(code);
+        if (room == null || room.GameType != "Chess") return;
+
+        var (state, error) = await _chessService.MakeMove(room.Id, player, from, to, promotion);
+        if (error != null)
+        {
+            await Clients.Caller.SendAsync("ChessError", error);
+            return;
+        }
+
+        await Clients.Group(code).SendAsync("ChessStateUpdated", ChessService.SerializeState(state, _chessService));
+    }
+
+    public async Task ChessResign(string code, string player)
+    {
+        code = code.ToUpper();
+        var room = await _roomService.GetRoomByCode(code);
+        if (room == null || room.GameType != "Chess") return;
+
+        try
+        {
+            var state = await _chessService.Resign(room.Id, player);
+            await Clients.Group(code).SendAsync("ChessStateUpdated", ChessService.SerializeState(state, _chessService));
+        }
+        catch (InvalidOperationException ex)
+        {
+            await Clients.Caller.SendAsync("ChessError", ex.Message);
+        }
+    }
+
+    public async Task ChessOfferDraw(string code, string player)
+    {
+        code = code.ToUpper();
+        var room = await _roomService.GetRoomByCode(code);
+        if (room == null || room.GameType != "Chess") return;
+
+        try
+        {
+            var state = await _chessService.OfferDraw(room.Id, player);
+            await Clients.Group(code).SendAsync("ChessStateUpdated", ChessService.SerializeState(state, _chessService));
+        }
+        catch (InvalidOperationException ex)
+        {
+            await Clients.Caller.SendAsync("ChessError", ex.Message);
+        }
+    }
+
+    public async Task ChessAcceptDraw(string code, string player)
+    {
+        code = code.ToUpper();
+        var room = await _roomService.GetRoomByCode(code);
+        if (room == null || room.GameType != "Chess") return;
+
+        try
+        {
+            var state = await _chessService.AcceptDraw(room.Id, player);
+            await Clients.Group(code).SendAsync("ChessStateUpdated", ChessService.SerializeState(state, _chessService));
+        }
+        catch (InvalidOperationException ex)
+        {
+            await Clients.Caller.SendAsync("ChessError", ex.Message);
+        }
     }
 }

@@ -34,6 +34,17 @@ const GAMES = [
     longDesc: 'Beat the dealer by getting as close to 21 as possible without going over. Hit, stand, or double down!',
     features: ['Multiplayer tables', 'Virtual chips', 'Real card dealing'],
   },
+  {
+    id: 'chess',
+    name: 'Chess',
+    icon: '♟️',
+    gradient: 'from-slate-600 via-gray-700 to-zinc-800',
+    hoverGradient: 'hover:from-slate-500 hover:via-gray-600 hover:to-zinc-700',
+    border: 'border-slate-500/30',
+    description: 'The classic strategy game',
+    longDesc: 'The ultimate game of strategy. Checkmate your opponent in this timeless battle of wits. Full rules including castling, en passant, and promotion.',
+    features: ['1v1 multiplayer', 'Full move validation', 'Castling & en passant'],
+  },
 ];
 
 export default function Landing() {
@@ -41,7 +52,7 @@ export default function Landing() {
 
   return (
     <div className="min-h-screen bg-gray-900 flex items-center justify-center px-4 py-12">
-      <div className="max-w-3xl w-full">
+      <div className="max-w-4xl w-full">
         {/* Header */}
         <div className="text-center mb-16">
           <h1 className="text-6xl font-extrabold text-white mb-4 tracking-tight">
@@ -54,7 +65,7 @@ export default function Landing() {
         </div>
 
         {/* Game Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-12">
           {GAMES.map((game) => (
             <button
               key={game.id}
