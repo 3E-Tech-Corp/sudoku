@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { startGameConnection, stopGameConnection } from '../services/signalr';
 import { sounds } from '../services/sounds';
+import VideoChat from '../components/VideoChat';
+import GameTimer from '../components/GameTimer';
 import confetti from 'canvas-confetti';
 import type { HubConnection } from '@microsoft/signalr';
 
@@ -44,6 +46,8 @@ interface RoomData {
   hostName: string;
   mode: string;
   gameType: string;
+  timeLimitSeconds: number | null;
+  startedAt: string | null;
   members: Member[];
   playerColors: Record<string, string>;
   twentyFourState: TwentyFourGameState | null;
@@ -298,6 +302,7 @@ export default function TwentyFourRoom() {
   const [faceDown, setFaceDown] = useState(true);
   const [selectingFor, setSelectingFor] = useState<'card1' | 'card2' | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
+  const [timerExpired, setTimerExpired] = useState(false);
 
   // Reset game state for new hand
   const resetForNewHand = useCallback((newCards: TwentyFourCard[]) => {
@@ -738,8 +743,14 @@ export default function TwentyFourRoom() {
               </span>
             )}
           </h1>
-          <div className="text-gray-500 text-sm">
-            <span className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            <VideoChat
+              connection={connRef.current}
+              roomCode={code || ''}
+              myName={myName}
+              myColor={myColor}
+            />
+            <span className="text-gray-500 text-sm flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: myColor }} />
               {myName}
             </span>
@@ -761,6 +772,16 @@ export default function TwentyFourRoom() {
       )}
 
       {/* Error message */}
+      {/* Timer Expired Banner */}
+      {timerExpired && !showWin && (
+        <div className="bg-gradient-to-r from-red-900/50 via-red-800/50 to-red-900/50 border-b border-red-700/50 px-4 py-3">
+          <div className="max-w-5xl mx-auto text-center">
+            <span className="text-2xl">⏰</span>
+            <span className="text-red-300 font-bold text-lg ml-2">Time&apos;s Up!</span>
+          </div>
+        </div>
+      )}
+
       {errorMsg && (
         <div className="bg-red-900/50 border-b border-red-700/50 px-4 py-2">
           <div className="max-w-5xl mx-auto text-center text-red-300 text-sm">{errorMsg}</div>
@@ -842,7 +863,7 @@ export default function TwentyFourRoom() {
                   key={i}
                   row={row}
                   rowIndex={i}
-                  isActive={i === activeRow && !showWin}
+                  isActive={i === activeRow && !showWin && !timerExpired}
                   onSlotClick={handleSlotClick}
                 />
               ))}
@@ -902,7 +923,17 @@ export default function TwentyFourRoom() {
           </div>
 
           {/* Sidebar */}
-          <div className="w-full lg:w-64 flex-shrink-0">
+          <div className="w-full lg:w-64 flex-shrink-0 space-y-4">
+            {/* Timer */}
+            {isCompetitive && room.timeLimitSeconds && (
+              <GameTimer
+                connection={connRef.current}
+                roomCode={room.code}
+                timeLimitSeconds={room.timeLimitSeconds}
+                startedAt={room.startedAt}
+                onTimerExpired={() => setTimerExpired(true)}
+              />
+            )}
             <div className="bg-gray-800 rounded-2xl border border-gray-700 p-6">
               {/* Room Info */}
               <div className="mb-4">

@@ -59,6 +59,7 @@ export default function GameLobby() {
   const [hostName, setHostName] = useState('');
   const [difficulty, setDifficulty] = useState('Medium');
   const [mode, setMode] = useState('Cooperative');
+  const [timeLimitSeconds, setTimeLimitSeconds] = useState<number | null>(null);
   const [isPublic, setIsPublic] = useState(false);
   const [joinCode, setJoinCode] = useState('');
   const [joinName, setJoinName] = useState('');
@@ -114,6 +115,7 @@ export default function GameLobby() {
         isPublic,
         mode,
         gameType: config.apiGameType,
+        timeLimitSeconds: mode === 'Competitive' ? timeLimitSeconds : null,
       });
       localStorage.setItem('sudoku_name', hostName.trim());
       navigate(`/room/${resp.code}`);
@@ -258,6 +260,35 @@ export default function GameLobby() {
                   ))}
                 </div>
               </div>
+
+              {/* Time Limit (competitive only) */}
+              {mode === 'Competitive' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">⏱ Time Limit</label>
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {[
+                      { value: null, label: 'None' },
+                      { value: 300, label: '5m' },
+                      { value: 600, label: '10m' },
+                      { value: 900, label: '15m' },
+                      { value: 1800, label: '30m' },
+                    ].map((opt) => (
+                      <button
+                        key={opt.label}
+                        type="button"
+                        onClick={() => setTimeLimitSeconds(opt.value)}
+                        className={`py-2 px-2 rounded-lg text-xs font-medium transition-all ${
+                          timeLimitSeconds === opt.value
+                            ? 'bg-purple-600 text-white ring-2 ring-purple-400'
+                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="flex items-center gap-3">
                 <button

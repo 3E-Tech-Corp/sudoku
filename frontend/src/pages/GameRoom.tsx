@@ -1,9 +1,11 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api';
-import { startConnection, stopConnection } from '../services/signalr';
+import { startGameConnection, stopGameConnection } from '../services/signalr';
 import SudokuBoard from '../components/SudokuBoard';
 import PlayerList from '../components/PlayerList';
+import VideoChat from '../components/VideoChat';
+import GameTimer from '../components/GameTimer';
 import type { HubConnection } from '@microsoft/signalr';
 
 interface Member {
@@ -28,6 +30,9 @@ interface RoomData {
   status: string;
   hostName: string;
   mode: string;
+  gameType: string;
+  timeLimitSeconds: number | null;
+  startedAt: string | null;
   initialBoard: number[][];
   currentBoard: number[][];
   solution: number[][];
@@ -57,6 +62,7 @@ export default function GameRoom() {
   const [nameInput, setNameInput] = useState('');
   const [error, setError] = useState('');
   const [winner, setWinner] = useState<string | null>(null);
+  const [timerExpired, setTimerExpired] = useState(false);
   const connRef = useRef<HubConnection | null>(null);
 
   const isCompetitive = room?.mode === 'Competitive';
@@ -74,8 +80,8 @@ export default function GameRoom() {
         if (resp.room.winner) setWinner(resp.room.winner);
         localStorage.setItem('sudoku_name', displayName);
 
-        // Connect SignalR
-        const conn = await startConnection();
+        // Connect SignalR (use GameHub which has both Sudoku + WebRTC methods)
+        const conn = await startGameConnection();
         connRef.current = conn;
         await conn.invoke('JoinRoom', code, displayName);
 
@@ -192,7 +198,7 @@ export default function GameRoom() {
       if (connRef.current) {
         connRef.current.invoke('LeaveRoom', code, myName).catch(() => {});
       }
-      stopConnection();
+      stopGameConnection();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
@@ -326,11 +332,11 @@ export default function GameRoom() {
     );
   }
 
-  const isCompleted = room.status === 'Completed' || (isCompetitive && winner !== null);
+  const isCompleted = room.status === 'Completed' || (isCompetitive && winner !== null) || timerExpired;
 
   // In competitive mode, you're "done" if YOU finished (but game continues for others)
   const myProgress = room.progress?.find((p) => p.displayName === myName);
-  const myBoardCompleted = isCompetitive && myProgress?.isCompleted;
+  const myBoardCompleted = isCompetitive && (myProgress?.isCompleted || timerExpired);
 
   return (
     <div className="min-h-screen bg-gray-900">
@@ -351,19 +357,34 @@ export default function GameRoom() {
               </span>
             )}
           </h1>
-          <div className="text-gray-500 text-sm">
-            {myName && (
-              <span className="flex items-center gap-2">
-                <span
-                  className="w-2.5 h-2.5 rounded-full inline-block"
-                  style={{ backgroundColor: myColor }}
-                />
-                {myName}
-              </span>
-            )}
+          <div className="flex items-center gap-3">
+            <VideoChat
+              connection={connRef.current}
+              roomCode={code || ''}
+              myName={myName}
+              myColor={myColor}
+            />
+            <span className="text-gray-500 text-sm flex items-center gap-2">
+              <span
+                className="w-2.5 h-2.5 rounded-full inline-block"
+                style={{ backgroundColor: myColor }}
+              />
+              {myName}
+            </span>
           </div>
         </div>
       </header>
+
+      {/* Timer Expired Banner */}
+      {isCompetitive && timerExpired && !winner && (
+        <div className="bg-gradient-to-r from-red-900/50 via-red-800/50 to-red-900/50 border-b border-red-700/50 px-4 py-3">
+          <div className="max-w-7xl mx-auto text-center">
+            <span className="text-2xl">⏰</span>
+            <span className="text-red-300 font-bold text-lg ml-2">Time&apos;s Up!</span>
+            <span className="text-2xl ml-1">⏰</span>
+          </div>
+        </div>
+      )}
 
       {/* Winner Banner */}
       {isCompetitive && winner && (
@@ -398,7 +419,17 @@ export default function GameRoom() {
           </div>
 
           {/* Sidebar */}
-          <div className="w-full lg:w-72 flex-shrink-0">
+          <div className="w-full lg:w-72 flex-shrink-0 space-y-4">
+            {/* Timer */}
+            {isCompetitive && room.timeLimitSeconds && (
+              <GameTimer
+                connection={connRef.current}
+                roomCode={room.code}
+                timeLimitSeconds={room.timeLimitSeconds}
+                startedAt={room.startedAt}
+                onTimerExpired={() => setTimerExpired(true)}
+              />
+            )}
             <PlayerList
               players={room.members}
               currentPlayer={myName}
