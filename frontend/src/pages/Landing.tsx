@@ -23,6 +23,17 @@ const GAMES = [
     longDesc: 'Deal 4 cards and combine them using +, −, ×, ÷ to make exactly 24. Three equations, one goal. Race your friends!',
     features: ['Playing card deck', 'Step-by-step equations', 'Score tracking'],
   },
+  {
+    id: 'blackjack',
+    name: 'Blackjack',
+    icon: '🂡',
+    gradient: 'from-emerald-600 via-green-700 to-teal-800',
+    hoverGradient: 'hover:from-emerald-500 hover:via-green-600 hover:to-teal-700',
+    border: 'border-emerald-500/30',
+    description: 'Classic casino card game',
+    longDesc: 'Beat the dealer by getting as close to 21 as possible without going over. Hit, stand, or double down!',
+    features: ['Multiplayer tables', 'Virtual chips', 'Real card dealing'],
+  },
 ];
 
 export default function Landing() {
@@ -43,7 +54,7 @@ export default function Landing() {
         </div>
 
         {/* Game Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-12">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
           {GAMES.map((game) => (
             <button
               key={game.id}

@@ -90,6 +90,7 @@ builder.Services.AddCors(options =>
 builder.Services.AddSingleton<AuthService>();
 builder.Services.AddSingleton<SudokuGenerator>();
 builder.Services.AddScoped<TwentyFourService>();
+builder.Services.AddScoped<BlackjackService>();
 builder.Services.AddScoped<RoomService>();
 builder.Services.AddHostedService<RoomCleanupService>();
 
@@ -226,6 +227,23 @@ using (var scope = app.Services.CreateScope())
                         WinnerName NVARCHAR(100) NULL,
                         WinningStepsJson NVARCHAR(MAX) NULL,
                         ScoresJson NVARCHAR(MAX) NOT NULL DEFAULT '{}',
+                        CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+                    );
+                END");
+
+            // BlackjackGameStates table
+            await conn.ExecuteAsync(@"
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'BlackjackGameStates')
+                BEGIN
+                    CREATE TABLE BlackjackGameStates (
+                        Id INT IDENTITY(1,1) PRIMARY KEY,
+                        RoomId INT NOT NULL,
+                        DeckJson NVARCHAR(MAX) NOT NULL,
+                        DealerHandJson NVARCHAR(MAX) NOT NULL DEFAULT '[]',
+                        DealerRevealed BIT NOT NULL DEFAULT 0,
+                        Phase NVARCHAR(20) NOT NULL DEFAULT 'Betting',
+                        CurrentPlayerIndex INT NOT NULL DEFAULT 0,
+                        PlayersJson NVARCHAR(MAX) NOT NULL DEFAULT '[]',
                         CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
                     );
                 END");

@@ -48,6 +48,16 @@ const GAME_CONFIG: Record<string, {
     hasDifficulty: false,
     tagline: 'Combine 4 cards to make 24 — race your friends!',
   },
+  blackjack: {
+    apiGameType: 'Blackjack',
+    name: 'Blackjack',
+    icon: '🂡',
+    accent: 'text-emerald-400',
+    accentBg: 'bg-emerald-600',
+    buttonClass: 'bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-800',
+    hasDifficulty: false,
+    tagline: 'Beat the dealer — get to 21 without going over!',
+  },
 };
 
 export default function GameLobby() {

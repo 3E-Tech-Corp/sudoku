@@ -23,13 +23,15 @@ public class RoomService
     ];
 
     private readonly TwentyFourService _twentyFourService;
+    private readonly BlackjackService _blackjackService;
 
-    public RoomService(IConfiguration config, SudokuGenerator generator, TwentyFourService twentyFourService)
+    public RoomService(IConfiguration config, SudokuGenerator generator, TwentyFourService twentyFourService, BlackjackService blackjackService)
     {
         _connectionString = config.GetConnectionString("DefaultConnection")
             ?? throw new InvalidOperationException("No connection string");
         _generator = generator;
         _twentyFourService = twentyFourService;
+        _blackjackService = blackjackService;
     }
 
     private SqlConnection GetConnection() => new(_connectionString);
@@ -42,7 +44,12 @@ public class RoomService
 
     public async Task<CreateRoomResponse> CreateRoom(CreateRoomRequest request)
     {
-        var gameType = request.GameType == "TwentyFour" ? "TwentyFour" : "Sudoku";
+        var gameType = request.GameType switch
+        {
+            "TwentyFour" => "TwentyFour",
+            "Blackjack" => "Blackjack",
+            _ => "Sudoku"
+        };
         var code = GenerateCode();
         var mode = request.Mode switch
         {
@@ -57,9 +64,9 @@ public class RoomService
         int puzzleId;
         string puzzleJson;
 
-        if (gameType == "TwentyFour")
+        if (gameType == "TwentyFour" || gameType == "Blackjack")
         {
-            // For 24 game, create a dummy puzzle entry (no board needed)
+            // For card games, create a dummy puzzle entry (no board needed)
             puzzleJson = "[]";
             puzzleId = await conn.QuerySingleAsync<int>(@"
                 INSERT INTO SudokuPuzzles (Difficulty, InitialBoard, Solution)
@@ -95,7 +102,7 @@ public class RoomService
                 Code = code,
                 PuzzleId = puzzleId,
                 request.HostName,
-                Difficulty = gameType == "TwentyFour" ? "N/A" : request.Difficulty,
+                Difficulty = (gameType == "TwentyFour" || gameType == "Blackjack") ? "N/A" : request.Difficulty,
                 CurrentBoard = puzzleJson,
                 PlayerColors = JsonSerializer.Serialize(initialColors),
                 request.IsPublic,
@@ -122,6 +129,12 @@ public class RoomService
             if (gameType == "TwentyFour")
             {
                 await _twentyFourService.InitializeGame(room.Id);
+            }
+
+            // Initialize blackjack game state
+            if (gameType == "Blackjack")
+            {
+                await _blackjackService.InitializeGame(room.Id);
             }
         }
 
@@ -197,6 +210,33 @@ public class RoomService
                 CreatedAt = room.CreatedAt,
                 CompletedAt = room.CompletedAt,
                 TwentyFourState = gameState
+            };
+        }
+
+        // Handle Blackjack game type
+        if (room.GameType == "Blackjack")
+        {
+            var bjState = await _blackjackService.GetGameState(room.Id);
+            return new RoomResponse
+            {
+                Code = room.Code,
+                Difficulty = "N/A",
+                Status = room.Status,
+                HostName = room.HostName,
+                Mode = room.Mode,
+                GameType = room.GameType,
+                TimeLimitSeconds = room.TimeLimitSeconds,
+                StartedAt = room.StartedAt,
+                InitialBoard = [],
+                CurrentBoard = [],
+                Solution = [],
+                Members = memberResponses,
+                PlayerColors = playerColors,
+                Notes = new(),
+                IsPublic = room.IsPublic,
+                CreatedAt = room.CreatedAt,
+                CompletedAt = room.CompletedAt,
+                BlackjackState = bjState
             };
         }
 

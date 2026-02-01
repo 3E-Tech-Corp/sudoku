@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import GameRoom from './GameRoom';
 import TwentyFourRoom from './TwentyFourRoom';
+import BlackjackRoom from './BlackjackRoom';
 
 interface RoomInfo {
   code: string;
@@ -62,6 +63,10 @@ export default function GameRouter() {
 
   if (gameType === 'TwentyFour') {
     return <TwentyFourRoom />;
+  }
+
+  if (gameType === 'Blackjack') {
+    return <BlackjackRoom />;
   }
 
   // Default: Sudoku

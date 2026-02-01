@@ -98,6 +98,8 @@ public class RoomResponse
     public string? Winner { get; set; }
     // TwentyFour-specific fields
     public TwentyFourGameState? TwentyFourState { get; set; }
+    // Blackjack-specific fields
+    public BlackjackGameState? BlackjackState { get; set; }
 }
 
 public class PublicRoomResponse
@@ -184,6 +186,48 @@ public class TwentyFourPlayerState
     public string? StepsJson { get; set; }   // current in-progress steps
 }
 
+// ========== Blackjack Game Models ==========
+
+public class BlackjackCard
+{
+    public int Rank { get; set; }   // 1=A, 2-10, 11=J, 12=Q, 13=K
+    public string Suit { get; set; } = "";
+}
+
+public class BlackjackPlayer
+{
+    public string PlayerName { get; set; } = "";
+    public List<BlackjackCard> Cards { get; set; } = [];
+    public int Bet { get; set; }
+    public int Chips { get; set; } = 1000;
+    public string Status { get; set; } = "Waiting"; // Waiting, Playing, Standing, Bust, Blackjack, Won, Lost, Push
+    public int InsuranceBet { get; set; }
+}
+
+public class BlackjackGameState
+{
+    public int Id { get; set; }
+    public int RoomId { get; set; }
+    public string DeckJson { get; set; } = "[]";
+    public string DealerHandJson { get; set; } = "[]";
+    public bool DealerRevealed { get; set; }
+    public string Phase { get; set; } = "Betting"; // Betting, Playing, DealerTurn, Payout
+    public int CurrentPlayerIndex { get; set; }
+    public string PlayersJson { get; set; } = "[]";
+    public DateTime CreatedAt { get; set; }
+}
+
+public class BlackjackStateResponse
+{
+    public int Id { get; set; }
+    public int RoomId { get; set; }
+    public List<BlackjackCard> DealerHand { get; set; } = [];
+    public bool DealerRevealed { get; set; }
+    public string Phase { get; set; } = "Betting";
+    public int CurrentPlayerIndex { get; set; }
+    public List<BlackjackPlayer> Players { get; set; } = [];
+}
+
 public class Complete24RowRequest
 {
     public int Row { get; set; }       // 0, 1, or 2
@@ -196,4 +240,35 @@ public class Complete24RowRequest
 public class Win24GameRequest
 {
     public List<TwentyFourStep> Steps { get; set; } = [];
+}
+
+// ========== Blackjack Game Models ==========
+
+public class BlackjackCard
+{
+    public int Rank { get; set; }       // 1-13 (1=Ace, 11=J, 12=Q, 13=K)
+    public string Suit { get; set; } = "";  // Hearts, Diamonds, Clubs, Spades
+}
+
+public class BlackjackPlayer
+{
+    public string PlayerName { get; set; } = "";
+    public List<BlackjackCard> Cards { get; set; } = [];
+    public int Bet { get; set; }
+    public int Chips { get; set; } = 1000;
+    public string Status { get; set; } = "Waiting"; // Waiting, Playing, Standing, Bust, Blackjack, Won, Lost, Push
+    public int InsuranceBet { get; set; }
+}
+
+public class BlackjackGameState
+{
+    public int Id { get; set; }
+    public int RoomId { get; set; }
+    public string DeckJson { get; set; } = "[]";
+    public string DealerHandJson { get; set; } = "[]";
+    public bool DealerRevealed { get; set; }
+    public string Phase { get; set; } = "Betting"; // Betting, Playing, DealerTurn, Payout
+    public int CurrentPlayerIndex { get; set; }
+    public string PlayersJson { get; set; } = "[]";
+    public DateTime CreatedAt { get; set; }
 }

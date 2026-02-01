@@ -10,6 +10,7 @@ public class GameHub : Hub
 {
     private readonly RoomService _roomService;
     private readonly TwentyFourService _twentyFourService;
+    private readonly BlackjackService _blackjackService;
 
     private static readonly JsonSerializerOptions _jsonOpts = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
@@ -19,10 +20,11 @@ public class GameHub : Hub
     // Track rooms where host has left: roomCode → (hostName, leftAt)
     private static readonly ConcurrentDictionary<string, (string HostName, DateTime LeftAt)> _hostLeftTimers = new();
 
-    public GameHub(RoomService roomService, TwentyFourService twentyFourService)
+    public GameHub(RoomService roomService, TwentyFourService twentyFourService, BlackjackService blackjackService)
     {
         _roomService = roomService;
         _twentyFourService = twentyFourService;
+        _blackjackService = blackjackService;
     }
 
     /// <summary>Get all room codes that have at least one connected player.</summary>
@@ -392,6 +394,128 @@ public class GameHub : Hub
             JsonSerializer.Serialize(newCards, _jsonOpts),
             newState.HandNumber,
             newState.ScoresJson);
+    }
+
+    // ==================== Blackjack methods ====================
+
+    public async Task BJPlaceBet(string code, string player, int amount)
+    {
+        code = code.ToUpper();
+        var room = await _roomService.GetRoomByCode(code);
+        if (room == null || room.GameType != "Blackjack") return;
+
+        try
+        {
+            var state = await _blackjackService.PlaceBet(room.Id, player, amount);
+            await Clients.Group(code).SendAsync("BJStateUpdated", BlackjackService.SanitizeState(state));
+        }
+        catch (InvalidOperationException ex)
+        {
+            await Clients.Caller.SendAsync("BJError", ex.Message);
+        }
+    }
+
+    public async Task BJHit(string code, string player)
+    {
+        code = code.ToUpper();
+        var room = await _roomService.GetRoomByCode(code);
+        if (room == null || room.GameType != "Blackjack") return;
+
+        try
+        {
+            var state = await _blackjackService.Hit(room.Id, player);
+            // If phase transitioned to DealerTurn, auto-play dealer
+            if (state.Phase == "DealerTurn")
+            {
+                state = await _blackjackService.PlayDealer(room.Id);
+            }
+            await Clients.Group(code).SendAsync("BJStateUpdated", BlackjackService.SanitizeState(state));
+        }
+        catch (InvalidOperationException ex)
+        {
+            await Clients.Caller.SendAsync("BJError", ex.Message);
+        }
+    }
+
+    public async Task BJStand(string code, string player)
+    {
+        code = code.ToUpper();
+        var room = await _roomService.GetRoomByCode(code);
+        if (room == null || room.GameType != "Blackjack") return;
+
+        try
+        {
+            var state = await _blackjackService.Stand(room.Id, player);
+            if (state.Phase == "DealerTurn")
+            {
+                state = await _blackjackService.PlayDealer(room.Id);
+            }
+            await Clients.Group(code).SendAsync("BJStateUpdated", BlackjackService.SanitizeState(state));
+        }
+        catch (InvalidOperationException ex)
+        {
+            await Clients.Caller.SendAsync("BJError", ex.Message);
+        }
+    }
+
+    public async Task BJDoubleDown(string code, string player)
+    {
+        code = code.ToUpper();
+        var room = await _roomService.GetRoomByCode(code);
+        if (room == null || room.GameType != "Blackjack") return;
+
+        try
+        {
+            var state = await _blackjackService.DoubleDown(room.Id, player);
+            if (state.Phase == "DealerTurn")
+            {
+                state = await _blackjackService.PlayDealer(room.Id);
+            }
+            await Clients.Group(code).SendAsync("BJStateUpdated", BlackjackService.SanitizeState(state));
+        }
+        catch (InvalidOperationException ex)
+        {
+            await Clients.Caller.SendAsync("BJError", ex.Message);
+        }
+    }
+
+    public async Task BJDealCards(string code)
+    {
+        code = code.ToUpper();
+        var room = await _roomService.GetRoomByCode(code);
+        if (room == null || room.GameType != "Blackjack") return;
+
+        try
+        {
+            var state = await _blackjackService.DealInitialCards(room.Id);
+            // If all players got blackjack, auto-play dealer
+            if (state.Phase == "DealerTurn")
+            {
+                state = await _blackjackService.PlayDealer(room.Id);
+            }
+            await Clients.Group(code).SendAsync("BJStateUpdated", BlackjackService.SanitizeState(state));
+        }
+        catch (InvalidOperationException ex)
+        {
+            await Clients.Caller.SendAsync("BJError", ex.Message);
+        }
+    }
+
+    public async Task BJNewRound(string code)
+    {
+        code = code.ToUpper();
+        var room = await _roomService.GetRoomByCode(code);
+        if (room == null || room.GameType != "Blackjack") return;
+
+        try
+        {
+            var state = await _blackjackService.NewRound(room.Id);
+            await Clients.Group(code).SendAsync("BJStateUpdated", BlackjackService.SanitizeState(state));
+        }
+        catch (InvalidOperationException ex)
+        {
+            await Clients.Caller.SendAsync("BJError", ex.Message);
+        }
     }
 
     // ==================== Timer methods ====================
