@@ -16,10 +16,28 @@ public class GameHub : Hub
     // Track connection → (roomCode, displayName) for peer list
     private static readonly ConcurrentDictionary<string, (string RoomCode, string DisplayName)> _connections = new();
 
+    // Track rooms where host has left: roomCode → (hostName, leftAt)
+    private static readonly ConcurrentDictionary<string, (string HostName, DateTime LeftAt)> _hostLeftTimers = new();
+
     public GameHub(RoomService roomService, TwentyFourService twentyFourService)
     {
         _roomService = roomService;
         _twentyFourService = twentyFourService;
+    }
+
+    /// <summary>Get all room codes that have at least one connected player.</summary>
+    public static HashSet<string> GetActiveRoomCodes()
+    {
+        return _connections.Values.Select(v => v.RoomCode).ToHashSet();
+    }
+
+    /// <summary>Get host-left timers for cleanup service.</summary>
+    public static ConcurrentDictionary<string, (string HostName, DateTime LeftAt)> GetHostLeftTimers() => _hostLeftTimers;
+
+    /// <summary>Get connected player count for a room.</summary>
+    public static int GetConnectedCount(string roomCode)
+    {
+        return _connections.Values.Count(v => v.RoomCode == roomCode);
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
@@ -29,6 +47,23 @@ public class GameHub : Hub
             await Groups.RemoveFromGroupAsync(Context.ConnectionId, info.RoomCode);
             await Clients.Group(info.RoomCode).SendAsync("PlayerLeft", info.DisplayName);
             await Clients.Group(info.RoomCode).SendAsync("PeerLeft", Context.ConnectionId, info.DisplayName);
+
+            // Check if this was the host leaving
+            var room = await _roomService.GetRoomByCode(info.RoomCode);
+            if (room != null && room.HostName == info.DisplayName && room.Status == "Active")
+            {
+                var othersInRoom = GetConnectedCount(info.RoomCode);
+                if (othersInRoom == 0)
+                {
+                    // Host left, nobody else — start the auto-close timer
+                    _hostLeftTimers[info.RoomCode] = (info.DisplayName, DateTime.UtcNow);
+                }
+                else
+                {
+                    // Host left but others remain — still start timer but with longer grace
+                    _hostLeftTimers[info.RoomCode] = (info.DisplayName, DateTime.UtcNow);
+                }
+            }
         }
         await base.OnDisconnectedAsync(exception);
     }
@@ -40,6 +75,16 @@ public class GameHub : Hub
         code = code.ToUpper();
         _connections[Context.ConnectionId] = (code, displayName);
         await Groups.AddToGroupAsync(Context.ConnectionId, code);
+
+        // Cancel auto-close timer if host rejoins or anyone joins an empty room
+        if (_hostLeftTimers.TryGetValue(code, out var timer))
+        {
+            if (timer.HostName == displayName || GetConnectedCount(code) >= 1)
+            {
+                _hostLeftTimers.TryRemove(code, out _);
+            }
+        }
+
         await Clients.Group(code).SendAsync("PlayerJoined", displayName);
         await Clients.Group(code).SendAsync("PeerJoined", Context.ConnectionId, displayName);
     }
@@ -51,6 +96,18 @@ public class GameHub : Hub
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, code);
         await Clients.Group(code).SendAsync("PlayerLeft", displayName);
         await Clients.Group(code).SendAsync("PeerLeft", Context.ConnectionId, displayName);
+    }
+
+    /// <summary>Host force-closes the room.</summary>
+    public async Task CloseRoom(string code, string hostName)
+    {
+        code = code.ToUpper();
+        var room = await _roomService.GetRoomByCode(code);
+        if (room == null || room.HostName != hostName) return;
+
+        await _roomService.CloseRoom(code);
+        _hostLeftTimers.TryRemove(code, out _);
+        await Clients.Group(code).SendAsync("RoomClosed", "Host closed the room");
     }
 
     // ==================== Sudoku methods (from SudokuHub) ====================

@@ -174,6 +174,11 @@ export default function GameRoom() {
           });
         });
 
+        conn.on('RoomClosed', (reason: string) => {
+          alert(reason || 'This room has been closed.');
+          navigate('/games/sudoku');
+        });
+
         setLoading(false);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to join room');
@@ -256,6 +261,12 @@ export default function GameRoom() {
     },
     [code, myName]
   );
+
+  const handleCloseRoom = useCallback(async () => {
+    if (!connRef.current || !code || !room) return;
+    if (!confirm('Close this room? All players will be disconnected.')) return;
+    connRef.current.invoke('CloseRoom', code, myName).catch(() => {});
+  }, [code, room, myName]);
 
   const handleEraseNumber = useCallback(
     (row: number, col: number) => {
@@ -449,6 +460,14 @@ export default function GameRoom() {
                 progress={room.progress || undefined}
                 winner={winner || undefined}
               />
+              {room.hostName === myName && (
+                <button
+                  onClick={handleCloseRoom}
+                  className="w-full mt-3 py-2 bg-red-900/50 hover:bg-red-800 text-red-300 text-sm font-medium rounded-lg transition-colors border border-red-700/50"
+                >
+                  🚪 Close Room
+                </button>
+              )}
             </CollapsibleSidebar>
           </div>
         </div>

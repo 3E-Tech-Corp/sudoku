@@ -504,6 +504,12 @@ export default function TwentyFourRoom() {
 
   // Unified room visuals (background, felt, layout, deck — persisted in localStorage)
   const [visuals, setVisuals] = useState<RoomVisuals>(getSavedVisuals);
+  const handleCloseRoom = useCallback(async () => {
+    if (!connRef.current || !code || !room) return;
+    if (!confirm('Close this room? All players will be disconnected.')) return;
+    connRef.current.invoke('CloseRoom', code, myName).catch(() => {});
+  }, [code, room, myName]);
+
   const handleVisualsChange = useCallback((v: RoomVisuals) => {
     setVisuals(v);
     saveVisuals(v);
@@ -603,6 +609,11 @@ export default function TwentyFourRoom() {
           api.get<RoomData>(`/rooms/${code}`).then((r) => {
             setRoom((prev) => prev ? { ...prev, members: r.members } : prev);
           });
+        });
+
+        conn.on('RoomClosed', (reason: string) => {
+          alert(reason || 'This room has been closed.');
+          navigate('/games/24');
         });
 
         conn.on('24GameWon', (winnerName: string, _stepsJson: string, scoresJson: string) => {
@@ -1374,6 +1385,14 @@ export default function TwentyFourRoom() {
                     <p>4. Make <span className="text-amber-400 font-bold">24</span> on the final row to win!</p>
                   </div>
                 </div>
+                {room.hostName === myName && (
+                  <button
+                    onClick={handleCloseRoom}
+                    className="w-full mt-4 py-2 bg-red-900/50 hover:bg-red-800 text-red-300 text-sm font-medium rounded-lg transition-colors border border-red-700/50"
+                  >
+                    🚪 Close Room
+                  </button>
+                )}
               </div>
             </CollapsibleSidebar>
           </div>

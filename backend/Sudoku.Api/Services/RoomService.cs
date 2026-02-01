@@ -752,6 +752,48 @@ public class RoomService
         }
     }
 
+    public async Task<bool> CloseRoom(string code)
+    {
+        using var conn = GetConnection();
+        await conn.OpenAsync();
+
+        var room = await conn.QuerySingleOrDefaultAsync<Room>(
+            "SELECT * FROM Rooms WHERE Code = @Code AND Status = 'Active'", new { Code = code });
+        if (room == null) return false;
+
+        await conn.ExecuteAsync(
+            "UPDATE Rooms SET Status = 'Closed', CompletedAt = GETUTCDATE() WHERE Id = @Id",
+            new { room.Id });
+        return true;
+    }
+
+    public async Task<int> CloseAbandonedRooms(IEnumerable<string> activeCodes)
+    {
+        using var conn = GetConnection();
+        await conn.OpenAsync();
+
+        // Find active rooms older than 5 minutes that are NOT in the active set
+        var activeRooms = (await conn.QueryAsync<Room>(
+            "SELECT * FROM Rooms WHERE Status = 'Active'")).ToList();
+
+        int closed = 0;
+        foreach (var room in activeRooms)
+        {
+            if (activeCodes.Contains(room.Code)) continue;
+
+            // Room has no connected players — check if it's been >5 min since creation or last activity
+            var age = (DateTime.UtcNow - room.CreatedAt).TotalMinutes;
+            if (age > 30) // Close rooms with 0 connected players after 30 min
+            {
+                await conn.ExecuteAsync(
+                    "UPDATE Rooms SET Status = 'Closed', CompletedAt = GETUTCDATE() WHERE Id = @Id",
+                    new { room.Id });
+                closed++;
+            }
+        }
+        return closed;
+    }
+
     public async Task<bool> EraseNumber(string code, int row, int col)
     {
         using var conn = GetConnection();

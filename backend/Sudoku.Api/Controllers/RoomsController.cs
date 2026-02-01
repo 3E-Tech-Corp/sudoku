@@ -54,4 +54,20 @@ public class RoomsController : ControllerBase
         var progress = await _roomService.GetProgress(code.ToUpper());
         return Ok(progress);
     }
+
+    [HttpPost("{code}/close")]
+    public async Task<IActionResult> CloseRoom(string code, [FromQuery] string host)
+    {
+        if (string.IsNullOrWhiteSpace(host))
+            return BadRequest(new { message = "Host name is required" });
+
+        // Verify the requester is the host
+        var room = await _roomService.GetRoom(code.ToUpper());
+        if (room == null) return NotFound(new { message = "Room not found" });
+        if (room.HostName != host) return Forbid();
+
+        var closed = await _roomService.CloseRoom(code.ToUpper());
+        if (!closed) return NotFound(new { message = "Room not found or already closed" });
+        return Ok(new { message = "Room closed" });
+    }
 }

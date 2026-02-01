@@ -91,6 +91,7 @@ builder.Services.AddSingleton<AuthService>();
 builder.Services.AddSingleton<SudokuGenerator>();
 builder.Services.AddScoped<TwentyFourService>();
 builder.Services.AddScoped<RoomService>();
+builder.Services.AddHostedService<RoomCleanupService>();
 
 var app = builder.Build();
 
