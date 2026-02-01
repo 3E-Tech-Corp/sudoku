@@ -781,6 +781,7 @@ export default function TwentyFourRoom() {
   }
 
   const isCompetitive = room.mode === 'Competitive';
+  const isPractice = room.mode === 'Practice';
   const usedSourceKeys = new Set(Object.values(placements));
 
   return (
@@ -795,6 +796,9 @@ export default function TwentyFourRoom() {
             <span className="text-amber-400">24</span> Card Game
             {isCompetitive && (
               <span className="ml-2 text-xs font-medium px-2 py-0.5 rounded bg-orange-900/30 text-orange-400">⚔️ Race</span>
+            )}
+            {isPractice && (
+              <span className="ml-2 text-xs font-medium px-2 py-0.5 rounded bg-emerald-900/30 text-emerald-400">🎯 Practice</span>
             )}
           </h1>
           <div className="flex items-center gap-3">
@@ -851,8 +855,12 @@ export default function TwentyFourRoom() {
             <div className="flex items-center justify-between mb-4">
               <div className="text-gray-500 text-sm">
                 <span>Hand #{handNumber}</span>
-                <span className="text-gray-600 mx-1.5">•</span>
-                <span className="font-mono text-blue-400">{room.code}</span>
+                {!isPractice && (
+                  <>
+                    <span className="text-gray-600 mx-1.5">•</span>
+                    <span className="font-mono text-blue-400">{room.code}</span>
+                  </>
+                )}
               </div>
               <HandStopwatch running={handClockRunning} resetKey={handClockKey} />
             </div>
@@ -988,21 +996,31 @@ export default function TwentyFourRoom() {
               />
             )}
             <div className="bg-gray-800 rounded-2xl border border-gray-700 p-6">
-              <div className="mb-4">
-                <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-1">Room Code</h3>
-                <div className="font-mono text-2xl font-bold text-white tracking-widest text-center py-1">{room.code}</div>
-                <button
-                  onClick={() => navigator.clipboard.writeText(`${window.location.origin}/room/${room.code}`)}
-                  className="mt-2 w-full py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
-                >
-                  📋 Copy Invite Link
-                </button>
-              </div>
+              {!isPractice && (
+                <div className="mb-4">
+                  <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-1">Room Code</h3>
+                  <div className="font-mono text-2xl font-bold text-white tracking-widest text-center py-1">{room.code}</div>
+                  <button
+                    onClick={() => navigator.clipboard.writeText(`${window.location.origin}/room/${room.code}`)}
+                    className="mt-2 w-full py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
+                  >
+                    📋 Copy Invite Link
+                  </button>
+                </div>
+              )}
+
+              {isPractice && (
+                <div className="mb-4 text-center">
+                  <div className="text-3xl mb-2">🎯</div>
+                  <h3 className="text-white font-bold text-lg">Practice Mode</h3>
+                  <p className="text-gray-400 text-sm mt-1">Sharpen your skills solo</p>
+                </div>
+              )}
 
               {Object.keys(scores).length > 0 && (
                 <div className="mb-4">
                   <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-2">
-                    🏆 Leaderboard
+                    {isPractice ? '📊 Your Score' : '🏆 Leaderboard'}
                   </h3>
                   <div className="space-y-1 max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600">
                     {Object.entries(scores)
@@ -1042,19 +1060,21 @@ export default function TwentyFourRoom() {
                 </div>
               )}
 
-              <div>
-                <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-2">Players ({room.members.length})</h3>
-                <div className="space-y-1 max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600">
-                  {room.members.map((member) => (
-                    <div key={member.displayName} className="flex items-center gap-2 p-2 rounded-lg bg-gray-700/50">
-                      <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: member.color }} />
-                      <span className="text-white text-sm truncate">
-                        {member.displayName}{member.displayName === myName && <span className="text-gray-400 text-xs ml-1">(you)</span>}
-                      </span>
-                    </div>
-                  ))}
+              {!isPractice && (
+                <div>
+                  <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-2">Players ({room.members.length})</h3>
+                  <div className="space-y-1 max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600">
+                    {room.members.map((member) => (
+                      <div key={member.displayName} className="flex items-center gap-2 p-2 rounded-lg bg-gray-700/50">
+                        <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: member.color }} />
+                        <span className="text-white text-sm truncate">
+                          {member.displayName}{member.displayName === myName && <span className="text-gray-400 text-xs ml-1">(you)</span>}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="mt-4 pt-4 border-t border-gray-700">
                 <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-2">How to Play</h3>

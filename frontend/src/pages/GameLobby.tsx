@@ -65,6 +65,7 @@ export default function GameLobby() {
   const [joinName, setJoinName] = useState('');
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState(false);
+  const [startingPractice, setStartingPractice] = useState(false);
   const [error, setError] = useState('');
   const [publicRooms, setPublicRooms] = useState<PublicRoom[]>([]);
   const [loadingRooms, setLoadingRooms] = useState(true);
@@ -99,6 +100,27 @@ export default function GameLobby() {
       </div>
     );
   }
+
+  const handlePractice = async () => {
+    const savedName = localStorage.getItem('sudoku_name') || 'Player';
+    setError('');
+    setStartingPractice(true);
+    try {
+      const resp = await api.post<CreateRoomResponse>('/rooms', {
+        difficulty: 'N/A',
+        hostName: savedName,
+        isPublic: false,
+        mode: 'Practice',
+        gameType: config!.apiGameType,
+      });
+      localStorage.setItem('sudoku_name', savedName);
+      navigate(`/room/${resp.code}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start practice');
+    } finally {
+      setStartingPractice(false);
+    }
+  };
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -180,6 +202,21 @@ export default function GameLobby() {
         {error && (
           <div className="max-w-md mx-auto mb-6 bg-red-900/50 border border-red-500 text-red-300 px-4 py-3 rounded-lg text-sm text-center">
             {error}
+          </div>
+        )}
+
+        {/* Quick Practice Button */}
+        {gameId === '24' && (
+          <div className="max-w-3xl mx-auto mb-8">
+            <button
+              onClick={handlePractice}
+              disabled={startingPractice}
+              className="w-full py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:from-emerald-800 disabled:to-teal-800 text-white font-bold text-lg rounded-2xl transition-all shadow-lg hover:shadow-emerald-500/20 flex items-center justify-center gap-3"
+            >
+              <span className="text-2xl">🎯</span>
+              {startingPractice ? 'Starting...' : 'Practice Solo'}
+              <span className="text-sm font-normal opacity-75 ml-1">— no room needed</span>
+            </button>
           </div>
         )}
 
@@ -360,7 +397,7 @@ export default function GameLobby() {
                   <p className="flex items-start gap-2"><span className="text-amber-400">1.</span> Four cards are dealt (numbers 1–13)</p>
                   <p className="flex items-start gap-2"><span className="text-amber-400">2.</span> Combine them using +, −, ×, ÷</p>
                   <p className="flex items-start gap-2"><span className="text-amber-400">3.</span> Build 3 equations — final result must be <span className="text-amber-400 font-bold">24</span></p>
-                  <p className="flex items-start gap-2"><span className="text-amber-400">4.</span> All intermediate results must be positive integers</p>
+                  <p className="flex items-start gap-2"><span className="text-amber-400">4.</span> All intermediate results must be non-negative integers (0 is OK!)</p>
                 </div>
               </div>
             )}

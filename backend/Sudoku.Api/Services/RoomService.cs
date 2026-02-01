@@ -44,7 +44,12 @@ public class RoomService
     {
         var gameType = request.GameType == "TwentyFour" ? "TwentyFour" : "Sudoku";
         var code = GenerateCode();
-        var mode = request.Mode == "Competitive" ? "Competitive" : "Cooperative";
+        var mode = request.Mode switch
+        {
+            "Competitive" => "Competitive",
+            "Practice" => "Practice",
+            _ => "Cooperative"
+        };
 
         using var conn = GetConnection();
         await conn.OpenAsync();
