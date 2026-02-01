@@ -86,6 +86,7 @@ function PlayingCard({
   animDelay,
   faceDown,
   themeId,
+  dealt,
 }: {
   card: TwentyFourCard | { number: number; suit: string };
   selected?: boolean;
@@ -95,66 +96,123 @@ function PlayingCard({
   animDelay?: number;
   faceDown?: boolean;
   themeId?: string;
+  dealt?: boolean;  // false = card hasn't been dealt yet (hidden), true = on table
 }) {
   const theme = getThemeById(themeId || 'classic');
   const isRealCard = card.suit === 'Hearts' || card.suit === 'Diamonds' || card.suit === 'Clubs' || card.suit === 'Spades';
+
+  // If dealt is explicitly false, card is not on the table yet
+  if (dealt === false) {
+    return (
+      <div className="w-[64px] h-[90px] sm:w-[88px] sm:h-[124px]" />
+    );
+  }
+
+  const cardFace = isRealCard ? (
+    <>
+      <img
+        src={theme.cardUrl(card.number, card.suit)}
+        alt={`${card.number} of ${card.suit}`}
+        className="w-full h-full object-contain rounded-lg"
+        style={theme.imgFilter ? { filter: theme.imgFilter } : undefined}
+        draggable={false}
+      />
+      {isResult && (
+        <div className="absolute -top-1 -right-1 w-5 h-5 bg-amber-500 rounded-full flex items-center justify-center shadow z-10">
+          <span className="text-[9px] text-white font-bold">R</span>
+        </div>
+      )}
+    </>
+  ) : (
+    <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-amber-50 to-amber-100 rounded-lg">
+      <div className="text-2xl sm:text-3xl font-bold text-gray-800">{card.number}</div>
+      <div className="text-xs text-amber-600 font-medium mt-1">Result</div>
+      {isResult && (
+        <div className="absolute -top-1 -right-1 w-5 h-5 bg-amber-500 rounded-full flex items-center justify-center shadow z-10">
+          <span className="text-[9px] text-white font-bold">R</span>
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <button
       onClick={onClick}
       disabled={used || faceDown}
-      className={`
-        relative w-[64px] h-[90px] sm:w-[88px] sm:h-[124px] rounded-lg sm:rounded-xl border-2 transition-all duration-300 flex items-center justify-center overflow-hidden
-        ${faceDown
-          ? 'border-blue-700 cursor-default shadow-md'
-          : selected
-          ? 'border-yellow-400 shadow-[0_0_15px_rgba(250,204,21,0.5)] scale-105 bg-white'
-          : used
-          ? 'border-gray-600 opacity-40 cursor-not-allowed bg-gray-700'
-          : isResult
-          ? 'border-amber-400 hover:border-amber-300 hover:shadow-lg cursor-pointer bg-gradient-to-b from-amber-50 to-amber-100'
-          : 'border-gray-300 hover:border-blue-400 hover:shadow-lg cursor-pointer active:scale-95 bg-white'
-        }
-      `}
+      className="w-[64px] h-[90px] sm:w-[88px] sm:h-[124px] [perspective:600px] cursor-pointer"
       style={{ animationDelay: animDelay ? `${animDelay}ms` : undefined }}
     >
-      {faceDown ? (
-        <img
-          src={theme.backUrl}
-          alt="Card back"
-          className="w-full h-full object-fill rounded-lg"
-          draggable={false}
-        />
-      ) : isRealCard ? (
-        <>
+      <div
+        className="relative w-full h-full transition-transform duration-500 [transform-style:preserve-3d]"
+        style={{ transform: faceDown ? 'rotateY(180deg)' : 'rotateY(0deg)' }}
+      >
+        {/* Front face (card face) */}
+        <div
+          className={`absolute inset-0 [backface-visibility:hidden] rounded-lg sm:rounded-xl border-2 flex items-center justify-center overflow-hidden
+            ${selected
+              ? 'border-yellow-400 shadow-[0_0_15px_rgba(250,204,21,0.5)] scale-105 bg-white'
+              : used
+              ? 'border-gray-600 opacity-40 bg-gray-700'
+              : isResult
+              ? 'border-amber-400 hover:border-amber-300 hover:shadow-lg bg-gradient-to-b from-amber-50 to-amber-100'
+              : 'border-gray-300 hover:border-blue-400 hover:shadow-lg active:scale-95 bg-white'
+            }
+          `}
+        >
+          {cardFace}
+        </div>
+
+        {/* Back face (card back) */}
+        <div
+          className="absolute inset-0 [backface-visibility:hidden] [transform:rotateY(180deg)] rounded-lg sm:rounded-xl border-2 border-blue-700 shadow-md overflow-hidden"
+        >
           <img
-            src={theme.cardUrl(card.number, card.suit)}
-            alt={`${card.number} of ${card.suit}`}
-            className="w-full h-full object-contain rounded-lg"
-            style={theme.imgFilter ? { filter: theme.imgFilter } : undefined}
+            src={theme.backUrl}
+            alt="Card back"
+            className="w-full h-full object-fill rounded-lg"
             draggable={false}
           />
-          {isResult && (
-            <div className="absolute -top-1 -right-1 w-5 h-5 bg-amber-500 rounded-full flex items-center justify-center shadow">
-              <span className="text-[9px] text-white font-bold">R</span>
-            </div>
-          )}
-        </>
-      ) : (
-        /* Result card (intermediate value) */
-        <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-amber-50 to-amber-100 rounded-lg">
-          <div className="text-2xl sm:text-3xl font-bold text-gray-800">
-            {card.number}
-          </div>
-          <div className="text-xs text-amber-600 font-medium mt-1">Result</div>
-          {isResult && (
-            <div className="absolute -top-1 -right-1 w-5 h-5 bg-amber-500 rounded-full flex items-center justify-center shadow">
-              <span className="text-[9px] text-white font-bold">R</span>
-            </div>
-          )}
         </div>
-      )}
+      </div>
     </button>
+  );
+}
+
+/** Shuffle deck animation — shows a deck riffling */
+function ShuffleDeck({ themeId, active }: { themeId?: string; active: boolean }) {
+  const theme = getThemeById(themeId || 'classic');
+  if (!active) return null;
+
+  return (
+    <div className="flex justify-center items-center py-4">
+      <div className="relative w-[88px] h-[124px]">
+        {/* Deck stack */}
+        {[0, 1, 2, 3, 4].map((i) => (
+          <div
+            key={i}
+            className="absolute inset-0 rounded-xl border-2 border-blue-700 shadow-md overflow-hidden"
+            style={{
+              transform: `translateX(${i * 2}px) translateY(${-i * 1}px)`,
+              animation: active ? `shuffle-riffle 1.2s ease-in-out ${i * 0.05}s` : undefined,
+              zIndex: 5 - i,
+            }}
+          >
+            <img src={theme.backUrl} alt="" className="w-full h-full object-fill rounded-lg" draggable={false} />
+          </div>
+        ))}
+      </div>
+      <style>{`
+        @keyframes shuffle-riffle {
+          0% { transform: translateX(0px) translateY(0px); }
+          15% { transform: translateX(-20px) translateY(-8px) rotate(-5deg); }
+          30% { transform: translateX(-15px) translateY(-3px) rotate(-2deg); }
+          50% { transform: translateX(20px) translateY(-8px) rotate(5deg); }
+          65% { transform: translateX(15px) translateY(-3px) rotate(2deg); }
+          80% { transform: translateX(-5px) translateY(-2px) rotate(-1deg); }
+          100% { transform: translateX(0px) translateY(0px) rotate(0deg); }
+        }
+      `}</style>
+    </div>
   );
 }
 
@@ -464,14 +522,15 @@ export default function TwentyFourRoom() {
   const [scores, setScores] = useState<Record<string, number>>({});
   const [showWin, setShowWin] = useState<string | null>(null);
   const [winPhrase, setWinPhrase] = useState('');
-  const [dealing, setDealing] = useState(false);
+  const [shuffling, setShuffling] = useState(false);
+  const [dealtCount, setDealtCount] = useState(4); // how many cards have been dealt (0-4)
   const [faceDown, setFaceDown] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [timerExpired, setTimerExpired] = useState(false);
   const [handClockRunning, setHandClockRunning] = useState(false);
   const [handClockKey, setHandClockKey] = useState(0);
 
-  // Reset game state for new hand
+  // Reset game state for new hand — full sequence: shuffle → deal face-down → flip
   const resetForNewHand = useCallback((newCards: TwentyFourCard[]) => {
     setCards(newCards);
     setRows([emptyRow(), emptyRow(), emptyRow()]);
@@ -481,16 +540,32 @@ export default function TwentyFourRoom() {
     setErrorMsg('');
     setShowWin(null);
     setFaceDown(true);
-    setDealing(true);
+    setDealtCount(0);
     setHandClockRunning(false);
 
-    setTimeout(() => { setDealing(false); }, 300);
+    // Phase 1: Shuffle animation + sound (0 – 1200ms)
+    setShuffling(true);
+    sounds.shuffle();
+
+    // Phase 2: Deal cards face-down one by one (1200 – 2000ms)
+    setTimeout(() => {
+      setShuffling(false);
+      // Deal each card with stagger
+      for (let i = 0; i < 4; i++) {
+        setTimeout(() => {
+          setDealtCount((c) => c + 1);
+          sounds.deal();
+        }, i * 180);
+      }
+    }, 1200);
+
+    // Phase 3: Flip all 4 simultaneously (2200ms)
     setTimeout(() => {
       setFaceDown(false);
       sounds.flip();
       setHandClockKey((k) => k + 1);
       setHandClockRunning(true);
-    }, 800);
+    }, 2200);
   }, []);
 
   const joinAndLoad = useCallback(
@@ -507,18 +582,10 @@ export default function TwentyFourRoom() {
           const gs = resp.room.twentyFourState;
           const parsedCards: TwentyFourCard[] = JSON.parse(gs.cardsJson);
           const parsedScores: Record<string, number> = JSON.parse(gs.scoresJson);
-          setCards(parsedCards);
           setHandNumber(gs.handNumber);
           setScores(parsedScores);
-          setFaceDown(true);
-          setDealing(true);
-          setTimeout(() => setDealing(false), 300);
-          setTimeout(() => {
-            setFaceDown(false);
-            sounds.flip();
-            setHandClockKey((k) => k + 1);
-            setHandClockRunning(true);
-          }, 800);
+          // Play the full deal animation on join
+          resetForNewHand(parsedCards);
         }
 
         const conn = await startGameConnection();
@@ -562,7 +629,8 @@ export default function TwentyFourRoom() {
           const newScores = JSON.parse(scoresJson);
           setHandNumber(handNum);
           setScores(newScores);
-          setTimeout(() => { setShowWin(null); resetForNewHand(newCards); sounds.shuffle(); }, 2000);
+          // Wait for win banner, then play full shuffle → deal → flip sequence
+          setTimeout(() => { setShowWin(null); resetForNewHand(newCards); }, 2000);
         });
 
         conn.on('24HandSkipped', (_player: string) => {});
@@ -1036,17 +1104,22 @@ export default function TwentyFourRoom() {
 
               const cardElements = cards.map((card, i) => {
                 const isUsed = usedSourceKeys.has(`card-${i}`);
+                const isDealt = i < dealtCount;
                 return (
                   <div
                     key={`${i}-${card.number}-${card.suit}`}
-                    className={`transition-all duration-500 ${dealing ? 'opacity-0 translate-y-8' : 'opacity-100 translate-y-0'}`}
-                    style={{ transitionDelay: `${i * 100}ms` }}
+                    className={`transition-all duration-300 ${
+                      !isDealt
+                        ? 'opacity-0 scale-75 translate-y-4'
+                        : 'opacity-100 scale-100 translate-y-0'
+                    }`}
                   >
                     <PlayingCard
                       card={card}
                       used={isUsed}
                       selected={false}
                       faceDown={faceDown}
+                      dealt={isDealt}
                       themeId={themeId}
                       onClick={() => {
                         if (!isUsed) placeNumber(card.number, `card-${i}`);
@@ -1095,12 +1168,16 @@ export default function TwentyFourRoom() {
               // Cards section inside felt
               const cardsSection = (
                 <>
-                  <div className={isRow
-                    ? 'flex justify-center gap-2 sm:gap-4 mb-4'
-                    : 'grid grid-cols-2 gap-2 sm:gap-3 justify-items-center mb-4 max-w-[200px] sm:max-w-[220px] mx-auto'
-                  }>
-                    {cardElements}
-                  </div>
+                  {shuffling ? (
+                    <ShuffleDeck themeId={themeId} active={shuffling} />
+                  ) : (
+                    <div className={isRow
+                      ? 'flex justify-center gap-2 sm:gap-4 mb-4'
+                      : 'grid grid-cols-2 gap-2 sm:gap-3 justify-items-center mb-4 max-w-[200px] sm:max-w-[220px] mx-auto'
+                    }>
+                      {cardElements}
+                    </div>
+                  )}
                   {resultCardElements && <div className="mb-3">{resultCardElements}</div>}
                 </>
               );
