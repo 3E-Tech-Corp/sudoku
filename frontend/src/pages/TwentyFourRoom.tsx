@@ -104,7 +104,7 @@ function PlayingCard({
       onClick={onClick}
       disabled={used || faceDown}
       className={`
-        relative w-20 h-28 sm:w-[88px] sm:h-[124px] rounded-xl border-2 transition-all duration-300 flex items-center justify-center overflow-hidden
+        relative w-[72px] h-[100px] sm:w-[88px] sm:h-[124px] rounded-xl border-2 transition-all duration-300 flex items-center justify-center overflow-hidden
         ${faceDown
           ? 'border-blue-700 cursor-default shadow-md'
           : selected
@@ -727,8 +727,8 @@ export default function TwentyFourRoom() {
         </div>
       )}
 
-      <div className="max-w-5xl mx-auto px-4 py-6">
-        <div className="flex flex-col lg:flex-row gap-6 items-start justify-center">
+      <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
+        <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 items-start justify-center">
           {/* Main game area */}
           <div className="flex-1 max-w-lg mx-auto w-full">
             {/* Hand info */}
@@ -740,54 +740,69 @@ export default function TwentyFourRoom() {
 
             {/* ── NEW LAYOUT ── */}
 
-            {/* 1. Dealt cards at top */}
-            <div className="flex justify-center gap-3 sm:gap-4 mb-4">
-              {cards.map((card, i) => {
-                const isUsed = usedSourceKeys.has(`card-${i}`);
-                return (
-                  <div
-                    key={`${i}-${card.number}-${card.suit}`}
-                    className={`transition-all duration-500 ${dealing ? 'opacity-0 translate-y-8' : 'opacity-100 translate-y-0'}`}
-                    style={{ transitionDelay: `${i * 100}ms` }}
-                  >
-                    <PlayingCard
-                      card={card}
-                      used={isUsed}
-                      selected={false}
-                      faceDown={faceDown}
-                      themeId={themeId}
-                      onClick={() => {
-                        if (!isUsed) placeNumber(card.number, `card-${i}`);
-                      }}
-                    />
-                  </div>
-                );
-              })}
-            </div>
+            {/* Green felt table surface */}
+            <div
+              className="relative rounded-2xl sm:rounded-3xl p-4 sm:p-6 mb-5 border-4 border-amber-900/80 shadow-[inset_0_2px_20px_rgba(0,0,0,0.4),0_4px_12px_rgba(0,0,0,0.3)]"
+              style={{
+                background: 'radial-gradient(ellipse at center, #2d7a3a 0%, #1e6b2a 40%, #165a22 100%)',
+                backgroundImage: `radial-gradient(ellipse at center, #2d7a3a 0%, #1e6b2a 40%, #165a22 100%), url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.08'/%3E%3C/svg%3E")`,
+              }}
+            >
+              {/* Subtle felt texture overlay */}
+              <div className="absolute inset-0 rounded-2xl sm:rounded-3xl opacity-[0.06] pointer-events-none" style={{
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Crect width='4' height='4' fill='%23000'/%3E%3Crect width='1' height='1' fill='%23fff'/%3E%3C/svg%3E")`,
+                backgroundSize: '4px 4px',
+              }} />
 
-            {/* Result cards from completed rows */}
-            {resultCards.size > 0 && (
-              <div className="flex justify-center gap-3 mb-4">
-                {Array.from(resultCards.entries()).map(([rowIdx, value]) => {
-                  const isUsed = usedSourceKeys.has(`result-${rowIdx}`);
+              {/* 1. Dealt cards on felt */}
+              <div className="flex justify-center gap-2 sm:gap-4 mb-4">
+                {cards.map((card, i) => {
+                  const isUsed = usedSourceKeys.has(`card-${i}`);
                   return (
-                    <PlayingCard
-                      key={`result-${rowIdx}`}
-                      card={{ number: value, suit: 'Results' }}
-                      isResult
-                      used={isUsed}
-                      themeId={themeId}
-                      onClick={() => {
-                        if (!isUsed) placeNumber(value, `result-${rowIdx}`);
-                      }}
-                    />
+                    <div
+                      key={`${i}-${card.number}-${card.suit}`}
+                      className={`transition-all duration-500 ${dealing ? 'opacity-0 translate-y-8' : 'opacity-100 translate-y-0'}`}
+                      style={{ transitionDelay: `${i * 100}ms` }}
+                    >
+                      <PlayingCard
+                        card={card}
+                        used={isUsed}
+                        selected={false}
+                        faceDown={faceDown}
+                        themeId={themeId}
+                        onClick={() => {
+                          if (!isUsed) placeNumber(card.number, `card-${i}`);
+                        }}
+                      />
+                    </div>
                   );
                 })}
               </div>
-            )}
 
-            {/* 2. Operator buttons — large, touch-friendly, always visible between cards and rows */}
-            <div className="flex justify-center gap-4 mb-5">
+              {/* Result cards from completed rows */}
+              {resultCards.size > 0 && (
+                <div className="flex justify-center gap-2 sm:gap-3 mb-3">
+                  {Array.from(resultCards.entries()).map(([rowIdx, value]) => {
+                    const isUsed = usedSourceKeys.has(`result-${rowIdx}`);
+                    return (
+                      <PlayingCard
+                        key={`result-${rowIdx}`}
+                        card={{ number: value, suit: 'Results' }}
+                        isResult
+                        used={isUsed}
+                        themeId={themeId}
+                        onClick={() => {
+                          if (!isUsed) placeNumber(value, `result-${rowIdx}`);
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* 2. Operator buttons — large, touch-friendly, always visible between felt and rows */}
+            <div className="flex justify-center gap-3 sm:gap-4 mb-5">
               {['+', '-', '*', '/'].map((op) => (
                 <OperatorButton
                   key={op}
