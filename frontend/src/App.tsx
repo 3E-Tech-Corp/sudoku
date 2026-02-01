@@ -4,7 +4,8 @@ import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Landing from './pages/Landing';
-import GameRoom from './pages/GameRoom';
+import GameLobby from './pages/GameLobby';
+import GameRouter from './pages/GameRouter';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -23,9 +24,10 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <Routes>
-      {/* Public routes - Sudoku game */}
+      {/* Public routes - Game platform */}
       <Route path="/" element={<Landing />} />
-      <Route path="/room/:code" element={<GameRoom />} />
+      <Route path="/games/:gameId" element={<GameLobby />} />
+      <Route path="/room/:code" element={<GameRouter />} />
 
       {/* Auth routes */}
       <Route path="/login" element={<Login />} />

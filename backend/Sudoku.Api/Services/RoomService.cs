@@ -22,11 +22,14 @@ public class RoomService
         "#F97316", // orange
     ];
 
-    public RoomService(IConfiguration config, SudokuGenerator generator)
+    private readonly TwentyFourService _twentyFourService;
+
+    public RoomService(IConfiguration config, SudokuGenerator generator, TwentyFourService twentyFourService)
     {
         _connectionString = config.GetConnectionString("DefaultConnection")
             ?? throw new InvalidOperationException("No connection string");
         _generator = generator;
+        _twentyFourService = twentyFourService;
     }
 
     private SqlConnection GetConnection() => new(_connectionString);
@@ -39,26 +42,40 @@ public class RoomService
 
     public async Task<CreateRoomResponse> CreateRoom(CreateRoomRequest request)
     {
-        var (puzzle, solution) = _generator.Generate(request.Difficulty);
-
-        var puzzleJson = JsonSerializer.Serialize(puzzle);
-        var solutionJson = JsonSerializer.Serialize(solution);
+        var gameType = request.GameType == "TwentyFour" ? "TwentyFour" : "Sudoku";
         var code = GenerateCode();
-
-        // Validate mode
         var mode = request.Mode == "Competitive" ? "Competitive" : "Cooperative";
 
         using var conn = GetConnection();
         await conn.OpenAsync();
 
-        // Insert puzzle
-        var puzzleId = await conn.QuerySingleAsync<int>(@"
-            INSERT INTO SudokuPuzzles (Difficulty, InitialBoard, Solution)
-            OUTPUT INSERTED.Id
-            VALUES (@Difficulty, @InitialBoard, @Solution)",
-            new { request.Difficulty, InitialBoard = puzzleJson, Solution = solutionJson });
+        int puzzleId;
+        string puzzleJson;
 
-        // Create room with initial board = puzzle (same as initial)
+        if (gameType == "TwentyFour")
+        {
+            // For 24 game, create a dummy puzzle entry (no board needed)
+            puzzleJson = "[]";
+            puzzleId = await conn.QuerySingleAsync<int>(@"
+                INSERT INTO SudokuPuzzles (Difficulty, InitialBoard, Solution)
+                OUTPUT INSERTED.Id
+                VALUES (@Difficulty, '[]', '[]')",
+                new { Difficulty = "N/A" });
+        }
+        else
+        {
+            var (puzzle, solution) = _generator.Generate(request.Difficulty);
+            puzzleJson = JsonSerializer.Serialize(puzzle);
+            var solutionJson = JsonSerializer.Serialize(solution);
+
+            puzzleId = await conn.QuerySingleAsync<int>(@"
+                INSERT INTO SudokuPuzzles (Difficulty, InitialBoard, Solution)
+                OUTPUT INSERTED.Id
+                VALUES (@Difficulty, @InitialBoard, @Solution)",
+                new { request.Difficulty, InitialBoard = puzzleJson, Solution = solutionJson });
+        }
+
+        // Create room
         var initialColors = new Dictionary<string, string>();
         if (!string.IsNullOrEmpty(request.HostName))
         {
@@ -66,18 +83,20 @@ public class RoomService
         }
 
         await conn.ExecuteAsync(@"
-            INSERT INTO Rooms (Code, PuzzleId, HostName, Difficulty, Status, CurrentBoard, PlayerColors, IsPublic, Mode)
-            VALUES (@Code, @PuzzleId, @HostName, @Difficulty, 'Active', @CurrentBoard, @PlayerColors, @IsPublic, @Mode)",
+            INSERT INTO Rooms (Code, PuzzleId, HostName, Difficulty, Status, CurrentBoard, PlayerColors, IsPublic, Mode, GameType, TimeLimitSeconds)
+            VALUES (@Code, @PuzzleId, @HostName, @Difficulty, 'Active', @CurrentBoard, @PlayerColors, @IsPublic, @Mode, @GameType, @TimeLimitSeconds)",
             new
             {
                 Code = code,
                 PuzzleId = puzzleId,
                 request.HostName,
-                request.Difficulty,
+                Difficulty = gameType == "TwentyFour" ? "N/A" : request.Difficulty,
                 CurrentBoard = puzzleJson,
                 PlayerColors = JsonSerializer.Serialize(initialColors),
                 request.IsPublic,
-                Mode = mode
+                Mode = mode,
+                GameType = gameType,
+                request.TimeLimitSeconds
             });
 
         // Add host as member if name provided
@@ -89,14 +108,19 @@ public class RoomService
                 VALUES (@RoomId, @DisplayName, @Color)",
                 new { RoomId = room.Id, DisplayName = request.HostName, Color = PlayerColors[0] });
 
-            // If competitive, create a competitive board for the host
-            if (mode == "Competitive")
+            if (gameType == "Sudoku" && mode == "Competitive")
             {
                 await CreateCompetitiveBoard(conn, room.Id, request.HostName, puzzleJson);
             }
+
+            // Initialize 24 game state
+            if (gameType == "TwentyFour")
+            {
+                await _twentyFourService.InitializeGame(room.Id);
+            }
         }
 
-        return new CreateRoomResponse { Code = code, Difficulty = request.Difficulty, Mode = mode };
+        return new CreateRoomResponse { Code = code, Difficulty = request.Difficulty, Mode = mode, GameType = gameType };
     }
 
     private async Task CreateCompetitiveBoard(SqlConnection conn, int roomId, string playerName, string initialBoard)
@@ -129,9 +153,6 @@ public class RoomService
             "SELECT * FROM Rooms WHERE Code = @Code", new { Code = code });
         if (room == null) return null;
 
-        var puzzle = await conn.QuerySingleAsync<SudokuPuzzle>(
-            "SELECT * FROM SudokuPuzzles WHERE Id = @Id", new { Id = room.PuzzleId });
-
         var members = (await conn.QueryAsync<RoomMember>(
             "SELECT * FROM RoomMembers WHERE RoomId = @RoomId ORDER BY JoinedAt",
             new { RoomId = room.Id })).ToList();
@@ -139,6 +160,44 @@ public class RoomService
         var playerColors = string.IsNullOrEmpty(room.PlayerColors)
             ? new Dictionary<string, string>()
             : JsonSerializer.Deserialize<Dictionary<string, string>>(room.PlayerColors) ?? new();
+
+        var memberResponses = members.Select(m => new MemberResponse
+        {
+            DisplayName = m.DisplayName,
+            Color = m.Color,
+            JoinedAt = m.JoinedAt
+        }).ToList();
+
+        // Handle TwentyFour game type
+        if (room.GameType == "TwentyFour")
+        {
+            var gameState = await _twentyFourService.GetGameState(room.Id);
+            return new RoomResponse
+            {
+                Code = room.Code,
+                Difficulty = "N/A",
+                Status = room.Status,
+                HostName = room.HostName,
+                Mode = room.Mode,
+                GameType = room.GameType,
+                TimeLimitSeconds = room.TimeLimitSeconds,
+                StartedAt = room.StartedAt,
+                InitialBoard = [],
+                CurrentBoard = [],
+                Solution = [],
+                Members = memberResponses,
+                PlayerColors = playerColors,
+                Notes = new(),
+                IsPublic = room.IsPublic,
+                CreatedAt = room.CreatedAt,
+                CompletedAt = room.CompletedAt,
+                TwentyFourState = gameState
+            };
+        }
+
+        // Sudoku logic (unchanged)
+        var puzzle = await conn.QuerySingleAsync<SudokuPuzzle>(
+            "SELECT * FROM SudokuPuzzles WHERE Id = @Id", new { Id = room.PuzzleId });
 
         var initialBoard = JsonSerializer.Deserialize<int[][]>(puzzle.InitialBoard) ?? [];
 
@@ -181,15 +240,13 @@ public class RoomService
                 Status = room.Status,
                 HostName = room.HostName,
                 Mode = room.Mode,
+                GameType = room.GameType,
+                TimeLimitSeconds = room.TimeLimitSeconds,
+                StartedAt = room.StartedAt,
                 InitialBoard = initialBoard,
                 CurrentBoard = currentBoard,
                 Solution = [], // Don't send solution in competitive mode
-                Members = members.Select(m => new MemberResponse
-                {
-                    DisplayName = m.DisplayName,
-                    Color = m.Color,
-                    JoinedAt = m.JoinedAt
-                }).ToList(),
+                Members = memberResponses,
                 PlayerColors = playerColors,
                 Notes = notes,
                 IsPublic = room.IsPublic,
@@ -212,15 +269,13 @@ public class RoomService
             Status = room.Status,
             HostName = room.HostName,
             Mode = room.Mode,
+            GameType = room.GameType,
+            TimeLimitSeconds = room.TimeLimitSeconds,
+            StartedAt = room.StartedAt,
             InitialBoard = initialBoard,
             CurrentBoard = JsonSerializer.Deserialize<int[][]>(room.CurrentBoard ?? puzzle.InitialBoard) ?? [],
             Solution = JsonSerializer.Deserialize<int[][]>(puzzle.Solution) ?? [],
-            Members = members.Select(m => new MemberResponse
-            {
-                DisplayName = m.DisplayName,
-                Color = m.Color,
-                JoinedAt = m.JoinedAt
-            }).ToList(),
+            Members = memberResponses,
             PlayerColors = playerColors,
             Notes = coopNotes,
             IsPublic = room.IsPublic,
@@ -274,12 +329,22 @@ public class RoomService
             "UPDATE Rooms SET PlayerColors = @PlayerColors WHERE Id = @Id",
             new { PlayerColors = JsonSerializer.Serialize(playerColors), room.Id });
 
-        // If competitive, create a competitive board for this player
-        if (room.Mode == "Competitive")
+        // If competitive Sudoku, create a competitive board for this player
+        if (room.Mode == "Competitive" && room.GameType == "Sudoku")
         {
             var puzzle = await conn.QuerySingleAsync<SudokuPuzzle>(
                 "SELECT * FROM SudokuPuzzles WHERE Id = @Id", new { Id = room.PuzzleId });
             await CreateCompetitiveBoard(conn, room.Id, request.DisplayName, puzzle.InitialBoard);
+        }
+
+        // If TwentyFour game and no game state exists yet, initialize it
+        if (room.GameType == "TwentyFour")
+        {
+            var existingState = await _twentyFourService.GetGameState(room.Id);
+            if (existingState == null)
+            {
+                await _twentyFourService.InitializeGame(room.Id);
+            }
         }
 
         var roomResponse = await GetRoom(code, request.DisplayName);
@@ -515,6 +580,24 @@ public class RoomService
         return room?.Mode;
     }
 
+    public async Task<(string? gameType, string? mode)> GetRoomInfo(string code)
+    {
+        using var conn = GetConnection();
+        await conn.OpenAsync();
+
+        var room = await conn.QuerySingleOrDefaultAsync<Room>(
+            "SELECT * FROM Rooms WHERE Code = @Code", new { Code = code });
+        return (room?.GameType, room?.Mode);
+    }
+
+    public async Task<Room?> GetRoomByCode(string code)
+    {
+        using var conn = GetConnection();
+        await conn.OpenAsync();
+        return await conn.QuerySingleOrDefaultAsync<Room>(
+            "SELECT * FROM Rooms WHERE Code = @Code", new { Code = code });
+    }
+
     private async Task<List<PlayerProgress>> GetProgressInternal(SqlConnection conn, int roomId, Dictionary<string, string> playerColors)
     {
         var boards = (await conn.QueryAsync<CompetitiveBoard>(
@@ -558,13 +641,19 @@ public class RoomService
         return await GetProgressInternal(conn, room.Id, playerColors);
     }
 
-    public async Task<List<PublicRoomResponse>> ListPublicRooms()
+    public async Task<List<PublicRoomResponse>> ListPublicRooms(string? gameType = null)
     {
         using var conn = GetConnection();
         await conn.OpenAsync();
 
-        var rooms = await conn.QueryAsync<Room>(
-            "SELECT * FROM Rooms WHERE IsPublic = 1 AND Status = 'Active' ORDER BY CreatedAt DESC");
+        var sql = "SELECT * FROM Rooms WHERE IsPublic = 1 AND Status = 'Active'";
+        if (!string.IsNullOrEmpty(gameType))
+        {
+            sql += " AND GameType = @GameType";
+        }
+        sql += " ORDER BY CreatedAt DESC";
+
+        var rooms = await conn.QueryAsync<Room>(sql, new { GameType = gameType });
 
         var result = new List<PublicRoomResponse>();
         foreach (var room in rooms)
@@ -577,6 +666,7 @@ public class RoomService
                 Difficulty = room.Difficulty,
                 HostName = room.HostName,
                 Mode = room.Mode,
+                GameType = room.GameType,
                 PlayerCount = memberCount,
                 CreatedAt = room.CreatedAt
             });
@@ -615,6 +705,24 @@ public class RoomService
             new { Notes = JsonSerializer.Serialize(notesDict), room.Id });
 
         return cellNotes.OrderBy(n => n).ToArray();
+    }
+
+    public async Task<DateTime?> StartTimer(string code)
+    {
+        using var conn = GetConnection();
+        await conn.OpenAsync();
+
+        var now = DateTime.UtcNow;
+        var affected = await conn.ExecuteAsync(
+            "UPDATE Rooms SET StartedAt = @StartedAt WHERE Code = @Code AND StartedAt IS NULL",
+            new { StartedAt = now, Code = code });
+
+        if (affected > 0) return now;
+
+        // Already started — return existing
+        var room = await conn.QuerySingleOrDefaultAsync<Room>(
+            "SELECT * FROM Rooms WHERE Code = @Code", new { Code = code });
+        return room?.StartedAt;
     }
 
     public async Task ClearNotes(string code, int row, int col)

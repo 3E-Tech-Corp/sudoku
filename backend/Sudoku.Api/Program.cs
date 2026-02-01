@@ -89,6 +89,7 @@ builder.Services.AddCors(options =>
 // Register services
 builder.Services.AddSingleton<AuthService>();
 builder.Services.AddSingleton<SudokuGenerator>();
+builder.Services.AddScoped<TwentyFourService>();
 builder.Services.AddScoped<RoomService>();
 
 var app = builder.Build();
@@ -195,6 +196,39 @@ using (var scope = app.Services.CreateScope())
                     );
                 END");
 
+            // Add GameType column to Rooms if missing
+            await conn.ExecuteAsync(@"
+                IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Rooms') AND name = 'GameType')
+                    ALTER TABLE Rooms ADD GameType NVARCHAR(50) NOT NULL DEFAULT 'Sudoku';");
+
+            // Add TimeLimitSeconds column to Rooms if missing
+            await conn.ExecuteAsync(@"
+                IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Rooms') AND name = 'TimeLimitSeconds')
+                    ALTER TABLE Rooms ADD TimeLimitSeconds INT NULL;");
+
+            // Add StartedAt column to Rooms if missing
+            await conn.ExecuteAsync(@"
+                IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Rooms') AND name = 'StartedAt')
+                    ALTER TABLE Rooms ADD StartedAt DATETIME NULL;");
+
+            // TwentyFourGameStates table
+            await conn.ExecuteAsync(@"
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'TwentyFourGameStates')
+                BEGIN
+                    CREATE TABLE TwentyFourGameStates (
+                        Id INT IDENTITY(1,1) PRIMARY KEY,
+                        RoomId INT NOT NULL,
+                        CardsJson NVARCHAR(MAX) NOT NULL,
+                        DeckJson NVARCHAR(MAX) NOT NULL,
+                        HandNumber INT NOT NULL DEFAULT 1,
+                        Status NVARCHAR(20) NOT NULL DEFAULT 'Playing',
+                        WinnerName NVARCHAR(100) NULL,
+                        WinningStepsJson NVARCHAR(MAX) NULL,
+                        ScoresJson NVARCHAR(MAX) NOT NULL DEFAULT '{}',
+                        CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+                    );
+                END");
+
             app.Logger.LogInformation("Database migration completed successfully");
         }
         catch (Exception ex)
@@ -216,5 +250,6 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 app.MapHub<SudokuHub>("/hubs/sudoku");
+app.MapHub<GameHub>("/hubs/game");
 
 app.Run();

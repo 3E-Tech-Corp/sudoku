@@ -22,6 +22,9 @@ public class Room
     public string? Notes { get; set; }
     public bool IsPublic { get; set; }
     public string Mode { get; set; } = "Cooperative";
+    public string GameType { get; set; } = "Sudoku";
+    public int? TimeLimitSeconds { get; set; }
+    public DateTime? StartedAt { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
 }
@@ -54,6 +57,8 @@ public class CreateRoomRequest
     public string HostName { get; set; } = "Host";
     public bool IsPublic { get; set; } = false;
     public string Mode { get; set; } = "Cooperative";
+    public string GameType { get; set; } = "Sudoku";
+    public int? TimeLimitSeconds { get; set; }
 }
 
 public class JoinRoomRequest
@@ -66,6 +71,7 @@ public class CreateRoomResponse
     public string Code { get; set; } = "";
     public string Difficulty { get; set; } = "";
     public string Mode { get; set; } = "Cooperative";
+    public string GameType { get; set; } = "Sudoku";
 }
 
 public class RoomResponse
@@ -75,6 +81,9 @@ public class RoomResponse
     public string Status { get; set; } = "";
     public string? HostName { get; set; }
     public string Mode { get; set; } = "Cooperative";
+    public string GameType { get; set; } = "Sudoku";
+    public int? TimeLimitSeconds { get; set; }
+    public DateTime? StartedAt { get; set; }
     public int[][] InitialBoard { get; set; } = [];
     public int[][] CurrentBoard { get; set; } = [];
     public int[][] Solution { get; set; } = [];
@@ -87,6 +96,8 @@ public class RoomResponse
     // Competitive-specific fields (populated only in competitive mode)
     public List<PlayerProgress>? Progress { get; set; }
     public string? Winner { get; set; }
+    // TwentyFour-specific fields
+    public TwentyFourGameState? TwentyFourState { get; set; }
 }
 
 public class PublicRoomResponse
@@ -95,6 +106,7 @@ public class PublicRoomResponse
     public string Difficulty { get; set; } = "";
     public string? HostName { get; set; }
     public string Mode { get; set; } = "Cooperative";
+    public string GameType { get; set; } = "Sudoku";
     public int PlayerCount { get; set; }
     public DateTime CreatedAt { get; set; }
 }
@@ -129,4 +141,59 @@ public class CellEntry
 {
     public int Value { get; set; }
     public string? Player { get; set; }
+}
+
+// ========== TwentyFour Game Models ==========
+
+public class TwentyFourCard
+{
+    public int Number { get; set; }     // 1-13
+    public string Suit { get; set; } = ""; // Hearts, Diamonds, Clubs, Spades
+}
+
+public class TwentyFourStep
+{
+    public int Card1 { get; set; }
+    public string Operation { get; set; } = "";  // +, -, *, /
+    public int Card2 { get; set; }
+    public int Result { get; set; }
+}
+
+public class TwentyFourGameState
+{
+    public int Id { get; set; }
+    public int RoomId { get; set; }
+    public string CardsJson { get; set; } = "[]";  // JSON array of TwentyFourCard
+    public string DeckJson { get; set; } = "[]";   // remaining deck
+    public int HandNumber { get; set; } = 1;
+    public string Status { get; set; } = "Playing"; // Playing, Won, Skipped
+    public string? WinnerName { get; set; }
+    public string? WinningStepsJson { get; set; }
+    public DateTime CreatedAt { get; set; }
+
+    // Scores stored as JSON: { "Player1": 5, "Player2": 3 }
+    public string ScoresJson { get; set; } = "{}";
+}
+
+public class TwentyFourPlayerState
+{
+    public int Id { get; set; }
+    public int GameStateId { get; set; }
+    public string PlayerName { get; set; } = "";
+    public int CompletedRows { get; set; } = 0;
+    public string? StepsJson { get; set; }   // current in-progress steps
+}
+
+public class Complete24RowRequest
+{
+    public int Row { get; set; }       // 0, 1, or 2
+    public int Card1 { get; set; }
+    public string Operation { get; set; } = "";
+    public int Card2 { get; set; }
+    public int Result { get; set; }
+}
+
+public class Win24GameRequest
+{
+    public List<TwentyFourStep> Steps { get; set; } = [];
 }

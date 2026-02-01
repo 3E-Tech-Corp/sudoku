@@ -23,9 +23,9 @@ public class RoomsController : ControllerBase
     }
 
     [HttpGet("public")]
-    public async Task<IActionResult> ListPublicRooms()
+    public async Task<IActionResult> ListPublicRooms([FromQuery] string? gameType = null)
     {
-        var rooms = await _roomService.ListPublicRooms();
+        var rooms = await _roomService.ListPublicRooms(gameType);
         return Ok(rooms);
     }
 

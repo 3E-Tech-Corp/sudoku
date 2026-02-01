@@ -316,10 +316,10 @@ export default function GameRoom() {
         <div className="text-center">
           <p className="text-red-400 text-lg mb-4">{error || 'Room not found'}</p>
           <button
-            onClick={() => navigate('/')}
+            onClick={() => navigate('/games/sudoku')}
             className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
           >
-            Back to Home
+            Back to Lobby
           </button>
         </div>
       </div>
@@ -338,7 +338,7 @@ export default function GameRoom() {
       <header className="border-b border-gray-800 px-4 py-3">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <button
-            onClick={() => navigate('/')}
+            onClick={() => navigate('/games/sudoku')}
             className="text-gray-400 hover:text-white transition-colors text-sm"
           >
             &larr; Back
