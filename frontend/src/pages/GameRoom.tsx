@@ -7,6 +7,7 @@ import PlayerList from '../components/PlayerList';
 import VideoChat from '../components/VideoChat';
 import GameTimer from '../components/GameTimer';
 import SudokuSettings, { getSavedSudokuVisuals, getSudokuBackgroundClass, type SudokuVisuals } from '../components/SudokuSettings';
+import CollapsibleSidebar from '../components/CollapsibleSidebar';
 import type { HubConnection } from '@microsoft/signalr';
 
 interface Member {
@@ -425,9 +426,9 @@ export default function GameRoom() {
             />
           </div>
 
-          {/* Sidebar */}
+          {/* Sidebar — collapsible on mobile */}
           <div className="w-full lg:w-72 flex-shrink-0 space-y-4">
-            {/* Timer */}
+            {/* Timer always visible */}
             {isCompetitive && room.timeLimitSeconds && (
               <GameTimer
                 connection={connRef.current}
@@ -437,16 +438,18 @@ export default function GameRoom() {
                 onTimerExpired={() => setTimerExpired(true)}
               />
             )}
-            <PlayerList
-              players={room.members}
-              currentPlayer={myName}
-              roomCode={room.code}
-              difficulty={room.difficulty}
-              isCompleted={isCompleted}
-              mode={room.mode}
-              progress={room.progress || undefined}
-              winner={winner || undefined}
-            />
+            <CollapsibleSidebar title={`Players (${room.members.length})`} badge={room.code}>
+              <PlayerList
+                players={room.members}
+                currentPlayer={myName}
+                roomCode={room.code}
+                difficulty={room.difficulty}
+                isCompleted={isCompleted}
+                mode={room.mode}
+                progress={room.progress || undefined}
+                winner={winner || undefined}
+              />
+            </CollapsibleSidebar>
           </div>
         </div>
       </div>

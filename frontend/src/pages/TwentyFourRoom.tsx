@@ -7,6 +7,7 @@ import VideoChat from '../components/VideoChat';
 import GameTimer from '../components/GameTimer';
 import RoomSettings, { getSavedVisuals, saveVisuals, getBackgroundClass, getFeltGradient, type RoomVisuals } from '../components/RoomSettings';
 import { getThemeById } from '../config/deckThemes';
+import CollapsibleSidebar from '../components/CollapsibleSidebar';
 import confetti from 'canvas-confetti';
 import type { HubConnection } from '@microsoft/signalr';
 
@@ -1268,7 +1269,7 @@ export default function TwentyFourRoom() {
             </div>
           </div>
 
-          {/* Sidebar */}
+          {/* Sidebar — collapsible on mobile */}
           <div className="w-full lg:w-64 flex-shrink-0 space-y-3 sm:space-y-4">
             {isCompetitive && room.timeLimitSeconds && (
               <GameTimer
@@ -1279,97 +1280,102 @@ export default function TwentyFourRoom() {
                 onTimerExpired={() => setTimerExpired(true)}
               />
             )}
-            <div className="bg-gray-800 rounded-xl sm:rounded-2xl border border-gray-700 p-4 sm:p-6">
-              {!isPractice && (
-                <div className="mb-4">
-                  <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-1">Room Code</h3>
-                  <div className="font-mono text-2xl font-bold text-white tracking-widest text-center py-1">{room.code}</div>
-                  <button
-                    onClick={() => navigator.clipboard.writeText(`${window.location.origin}/room/${room.code}`)}
-                    className="mt-2 w-full py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
-                  >
-                    📋 Copy Invite Link
-                  </button>
-                </div>
-              )}
-
-              {isPractice && (
-                <div className="mb-4 text-center">
-                  <div className="text-3xl mb-2">🎯</div>
-                  <h3 className="text-white font-bold text-lg">Practice Mode</h3>
-                  <p className="text-gray-400 text-sm mt-1">Sharpen your skills solo</p>
-                </div>
-              )}
-
-              {Object.keys(scores).length > 0 && (
-                <div className="mb-4">
-                  <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-2">
-                    {isPractice ? '📊 Your Score' : '🏆 Leaderboard'}
-                  </h3>
-                  <div className="space-y-1 max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600">
-                    {Object.entries(scores)
-                      .sort(([, a], [, b]) => b - a)
-                      .map(([name, score], idx) => {
-                        const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : null;
-                        const isMe = name === myName;
-                        return (
-                          <div
-                            key={name}
-                            className={`flex items-center justify-between p-2 rounded-lg transition-all ${
-                              isMe ? 'bg-blue-900/30 border border-blue-700/40' : 'bg-gray-700/50'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2 min-w-0">
-                              <span className="text-sm w-6 text-center flex-shrink-0">
-                                {medal || <span className="text-gray-500 text-xs">{idx + 1}</span>}
-                              </span>
-                              <span className={`text-sm font-medium truncate ${isMe ? 'text-blue-300' : 'text-white'}`}>
-                                {name}
-                                {isMe && <span className="text-gray-400 text-xs ml-1">(you)</span>}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1 flex-shrink-0">
-                              <span className="text-amber-400 font-bold text-lg">{score}</span>
-                              <span className="text-gray-500 text-xs">pts</span>
-                            </div>
-                          </div>
-                        );
-                      })}
+            <CollapsibleSidebar
+              title={isPractice ? '🎯 Practice' : `Players (${room.members.length})`}
+              badge={!isPractice ? room.code : undefined}
+            >
+              <div className="bg-gray-800 rounded-xl sm:rounded-2xl border border-gray-700 p-4 sm:p-6">
+                {!isPractice && (
+                  <div className="mb-4">
+                    <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-1">Room Code</h3>
+                    <div className="font-mono text-2xl font-bold text-white tracking-widest text-center py-1">{room.code}</div>
+                    <button
+                      onClick={() => navigator.clipboard.writeText(`${window.location.origin}/room/${room.code}`)}
+                      className="mt-2 w-full py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
+                    >
+                      📋 Copy Invite Link
+                    </button>
                   </div>
-                  {handNumber > 1 && (
-                    <div className="mt-2 text-center text-gray-500 text-xs">
-                      {handNumber - 1} hands played
+                )}
+
+                {isPractice && (
+                  <div className="mb-4 text-center">
+                    <div className="text-3xl mb-2">🎯</div>
+                    <h3 className="text-white font-bold text-lg">Practice Mode</h3>
+                    <p className="text-gray-400 text-sm mt-1">Sharpen your skills solo</p>
+                  </div>
+                )}
+
+                {Object.keys(scores).length > 0 && (
+                  <div className="mb-4">
+                    <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-2">
+                      {isPractice ? '📊 Your Score' : '🏆 Leaderboard'}
+                    </h3>
+                    <div className="space-y-1 max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600">
+                      {Object.entries(scores)
+                        .sort(([, a], [, b]) => b - a)
+                        .map(([name, score], idx) => {
+                          const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : null;
+                          const isMe = name === myName;
+                          return (
+                            <div
+                              key={name}
+                              className={`flex items-center justify-between p-2 rounded-lg transition-all ${
+                                isMe ? 'bg-blue-900/30 border border-blue-700/40' : 'bg-gray-700/50'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="text-sm w-6 text-center flex-shrink-0">
+                                  {medal || <span className="text-gray-500 text-xs">{idx + 1}</span>}
+                                </span>
+                                <span className={`text-sm font-medium truncate ${isMe ? 'text-blue-300' : 'text-white'}`}>
+                                  {name}
+                                  {isMe && <span className="text-gray-400 text-xs ml-1">(you)</span>}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                <span className="text-amber-400 font-bold text-lg">{score}</span>
+                                <span className="text-gray-500 text-xs">pts</span>
+                              </div>
+                            </div>
+                          );
+                        })}
                     </div>
-                  )}
-                </div>
-              )}
-
-              {!isPractice && (
-                <div>
-                  <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-2">Players ({room.members.length})</h3>
-                  <div className="space-y-1 max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600">
-                    {room.members.map((member) => (
-                      <div key={member.displayName} className="flex items-center gap-2 p-2 rounded-lg bg-gray-700/50">
-                        <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: member.color }} />
-                        <span className="text-white text-sm truncate">
-                          {member.displayName}{member.displayName === myName && <span className="text-gray-400 text-xs ml-1">(you)</span>}
-                        </span>
+                    {handNumber > 1 && (
+                      <div className="mt-2 text-center text-gray-500 text-xs">
+                        {handNumber - 1} hands played
                       </div>
-                    ))}
+                    )}
                   </div>
-                </div>
-              )}
+                )}
 
-              <div className="mt-4 pt-4 border-t border-gray-700">
-                <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-2">How to Play</h3>
-                <div className="text-gray-500 text-xs space-y-1">
-                  <p>1. Tap cards &amp; operators — they auto-fill the current row</p>
-                  <p>2. Rows auto-lock when complete</p>
-                  <p>3. Results become new cards for the next row</p>
-                  <p>4. Make <span className="text-amber-400 font-bold">24</span> on the final row to win!</p>
+                {!isPractice && (
+                  <div>
+                    <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-2">Players ({room.members.length})</h3>
+                    <div className="space-y-1 max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600">
+                      {room.members.map((member) => (
+                        <div key={member.displayName} className="flex items-center gap-2 p-2 rounded-lg bg-gray-700/50">
+                          <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: member.color }} />
+                          <span className="text-white text-sm truncate">
+                            {member.displayName}{member.displayName === myName && <span className="text-gray-400 text-xs ml-1">(you)</span>}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-4 pt-4 border-t border-gray-700">
+                  <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-2">How to Play</h3>
+                  <div className="text-gray-500 text-xs space-y-1">
+                    <p>1. Tap cards &amp; operators — they auto-fill the current row</p>
+                    <p>2. Rows auto-lock when complete</p>
+                    <p>3. Results become new cards for the next row</p>
+                    <p>4. Make <span className="text-amber-400 font-bold">24</span> on the final row to win!</p>
+                  </div>
                 </div>
               </div>
-            </div>
+            </CollapsibleSidebar>
           </div>
         </div>
       </div>
