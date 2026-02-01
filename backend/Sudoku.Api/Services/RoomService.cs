@@ -392,6 +392,12 @@ public class RoomService
             }
         }
 
+        // Ensure player is in blackjack game
+        if (room.GameType == "Blackjack")
+        {
+            await _blackjackService.EnsurePlayerInGame(room.Id, request.DisplayName);
+        }
+
         var roomResponse = await GetRoom(code, request.DisplayName);
         return new JoinRoomResponse
         {

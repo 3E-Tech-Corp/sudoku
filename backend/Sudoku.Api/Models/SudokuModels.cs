@@ -241,34 +241,3 @@ public class Win24GameRequest
 {
     public List<TwentyFourStep> Steps { get; set; } = [];
 }
-
-// ========== Blackjack Game Models ==========
-
-public class BlackjackCard
-{
-    public int Rank { get; set; }       // 1-13 (1=Ace, 11=J, 12=Q, 13=K)
-    public string Suit { get; set; } = "";  // Hearts, Diamonds, Clubs, Spades
-}
-
-public class BlackjackPlayer
-{
-    public string PlayerName { get; set; } = "";
-    public List<BlackjackCard> Cards { get; set; } = [];
-    public int Bet { get; set; }
-    public int Chips { get; set; } = 1000;
-    public string Status { get; set; } = "Waiting"; // Waiting, Playing, Standing, Bust, Blackjack, Won, Lost, Push
-    public int InsuranceBet { get; set; }
-}
-
-public class BlackjackGameState
-{
-    public int Id { get; set; }
-    public int RoomId { get; set; }
-    public string DeckJson { get; set; } = "[]";
-    public string DealerHandJson { get; set; } = "[]";
-    public bool DealerRevealed { get; set; }
-    public string Phase { get; set; } = "Betting"; // Betting, Playing, DealerTurn, Payout
-    public int CurrentPlayerIndex { get; set; }
-    public string PlayersJson { get; set; } = "[]";
-    public DateTime CreatedAt { get; set; }
-}

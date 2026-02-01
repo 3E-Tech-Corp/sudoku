@@ -8,9 +8,9 @@ namespace Sudoku.Api.Services;
 public class BlackjackService
 {
     private readonly string _connectionString;
+    private static readonly JsonSerializerOptions _jsonOpts = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private static readonly Random _rng = new();
     private static readonly string[] Suits = ["Hearts", "Diamonds", "Clubs", "Spades"];
-    private static readonly JsonSerializerOptions _jsonOpts = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
     public BlackjackService(IConfiguration config)
     {
@@ -20,95 +20,48 @@ public class BlackjackService
 
     private SqlConnection GetConnection() => new(_connectionString);
 
-    /// <summary>
-    /// Generate a shuffled shoe of 6 standard decks (312 cards).
-    /// </summary>
-    private static List<BlackjackCard> GenerateShoe()
+    // Build a 6-deck shoe
+    private static List<BlackjackCard> BuildShoe()
     {
-        var shoe = new List<BlackjackCard>();
+        var deck = new List<BlackjackCard>();
         for (int d = 0; d < 6; d++)
-        {
             foreach (var suit in Suits)
-            {
                 for (int rank = 1; rank <= 13; rank++)
-                {
-                    shoe.Add(new BlackjackCard { Rank = rank, Suit = suit });
-                }
-            }
-        }
+                    deck.Add(new BlackjackCard { Rank = rank, Suit = suit });
+
         // Fisher-Yates shuffle
-        for (int i = shoe.Count - 1; i > 0; i--)
+        for (int i = deck.Count - 1; i > 0; i--)
         {
             int j = _rng.Next(i + 1);
-            (shoe[i], shoe[j]) = (shoe[j], shoe[i]);
+            (deck[i], deck[j]) = (deck[j], deck[i]);
         }
-        return shoe;
+        return deck;
     }
 
-    /// <summary>
-    /// Calculate the best hand value for a set of cards.
-    /// Aces count as 11 unless that would bust, then they count as 1.
-    /// </summary>
-    public static int CalculateHandValue(List<BlackjackCard> cards)
+    public static int HandValue(List<BlackjackCard> cards)
     {
-        int value = 0;
-        int aces = 0;
-        foreach (var card in cards)
+        int total = 0, aces = 0;
+        foreach (var c in cards)
         {
-            if (card.Rank == 1)
-            {
-                aces++;
-                value += 11;
-            }
-            else if (card.Rank >= 10) // 10, J, Q, K
-            {
-                value += 10;
-            }
-            else
-            {
-                value += card.Rank;
-            }
+            if (c.Rank == 1) { total += 11; aces++; }
+            else if (c.Rank >= 11) total += 10;
+            else total += c.Rank;
         }
-        // Downgrade aces from 11 to 1 as needed
-        while (value > 21 && aces > 0)
-        {
-            value -= 10;
-            aces--;
-        }
-        return value;
+        while (total > 21 && aces > 0) { total -= 10; aces--; }
+        return total;
     }
 
-    /// <summary>
-    /// Check if a hand is a natural blackjack (exactly 2 cards totaling 21).
-    /// </summary>
-    private static bool IsBlackjack(List<BlackjackCard> cards)
-    {
-        return cards.Count == 2 && CalculateHandValue(cards) == 21;
-    }
+    public static bool IsBlackjack(List<BlackjackCard> cards) =>
+        cards.Count == 2 && HandValue(cards) == 21;
 
-    /// <summary>
-    /// Initialize a new blackjack game state for a room.
-    /// </summary>
     public async Task<BlackjackGameState> InitializeGame(int roomId)
     {
-        var shoe = GenerateShoe();
-
         using var conn = GetConnection();
         await conn.OpenAsync();
 
-        var id = await conn.QuerySingleAsync<int>(@"
-            INSERT INTO BlackjackGameStates (RoomId, DeckJson, DealerHandJson, DealerRevealed, Phase, CurrentPlayerIndex, PlayersJson)
-            OUTPUT INSERTED.Id
-            VALUES (@RoomId, @DeckJson, '[]', 0, 'Betting', 0, '[]')",
-            new
-            {
-                RoomId = roomId,
-                DeckJson = JsonSerializer.Serialize(shoe, _jsonOpts)
-            });
-
-        return new BlackjackGameState
+        var shoe = BuildShoe();
+        var state = new BlackjackGameState
         {
-            Id = id,
             RoomId = roomId,
             DeckJson = JsonSerializer.Serialize(shoe, _jsonOpts),
             DealerHandJson = "[]",
@@ -117,11 +70,16 @@ public class BlackjackService
             CurrentPlayerIndex = 0,
             PlayersJson = "[]"
         };
+
+        state.Id = await conn.QuerySingleAsync<int>(@"
+            INSERT INTO BlackjackGameStates (RoomId, DeckJson, DealerHandJson, DealerRevealed, Phase, CurrentPlayerIndex, PlayersJson)
+            OUTPUT INSERTED.Id
+            VALUES (@RoomId, @DeckJson, @DealerHandJson, @DealerRevealed, @Phase, @CurrentPlayerIndex, @PlayersJson)",
+            state);
+
+        return state;
     }
 
-    /// <summary>
-    /// Get the current (most recent) game state for a room.
-    /// </summary>
     public async Task<BlackjackGameState?> GetGameState(int roomId)
     {
         using var conn = GetConnection();
@@ -131,553 +89,352 @@ public class BlackjackService
             new { RoomId = roomId });
     }
 
-    /// <summary>
-    /// Place a bet for a player. Adds the player if not already present.
-    /// </summary>
-    public async Task<BlackjackGameState> PlaceBet(int roomId, string playerName, int amount)
+    public BlackjackStateResponse ToResponse(BlackjackGameState state, bool hideHoleCard = true)
+    {
+        var dealerHand = JsonSerializer.Deserialize<List<BlackjackCard>>(state.DealerHandJson, _jsonOpts) ?? [];
+        var players = JsonSerializer.Deserialize<List<BlackjackPlayer>>(state.PlayersJson, _jsonOpts) ?? [];
+
+        // If dealer hole card not revealed, only show first card
+        var visibleDealerHand = dealerHand;
+        if (hideHoleCard && !state.DealerRevealed && dealerHand.Count >= 2)
+        {
+            visibleDealerHand = [dealerHand[0], new BlackjackCard { Rank = 0, Suit = "Hidden" }];
+        }
+
+        return new BlackjackStateResponse
+        {
+            Id = state.Id,
+            RoomId = state.RoomId,
+            DealerHand = visibleDealerHand,
+            DealerRevealed = state.DealerRevealed,
+            Phase = state.Phase,
+            CurrentPlayerIndex = state.CurrentPlayerIndex,
+            Players = players
+        };
+    }
+
+    private async Task SaveState(BlackjackGameState state)
     {
         using var conn = GetConnection();
         await conn.OpenAsync();
+        await conn.ExecuteAsync(@"
+            UPDATE BlackjackGameStates
+            SET DeckJson = @DeckJson, DealerHandJson = @DealerHandJson, DealerRevealed = @DealerRevealed,
+                Phase = @Phase, CurrentPlayerIndex = @CurrentPlayerIndex, PlayersJson = @PlayersJson
+            WHERE Id = @Id", state);
+    }
 
-        var state = await conn.QuerySingleAsync<BlackjackGameState>(
-            "SELECT TOP 1 * FROM BlackjackGameStates WHERE RoomId = @RoomId ORDER BY Id DESC",
-            new { RoomId = roomId });
+    private BlackjackCard DrawCard(List<BlackjackCard> deck)
+    {
+        if (deck.Count == 0) throw new InvalidOperationException("Deck is empty");
+        var card = deck[0];
+        deck.RemoveAt(0);
+        return card;
+    }
 
-        if (state.Phase != "Betting")
-            throw new InvalidOperationException("Bets can only be placed during the Betting phase.");
+    public async Task<BlackjackGameState> EnsurePlayerInGame(int roomId, string playerName)
+    {
+        var state = await GetGameState(roomId);
+        if (state == null) state = await InitializeGame(roomId);
 
         var players = JsonSerializer.Deserialize<List<BlackjackPlayer>>(state.PlayersJson, _jsonOpts) ?? [];
-
-        var player = players.FirstOrDefault(p => p.PlayerName == playerName);
-        if (player == null)
+        if (!players.Any(p => p.PlayerName == playerName))
         {
-            player = new BlackjackPlayer { PlayerName = playerName, Chips = 1000 };
-            players.Add(player);
+            players.Add(new BlackjackPlayer { PlayerName = playerName, Chips = 1000, Status = "Waiting" });
+            state.PlayersJson = JsonSerializer.Serialize(players, _jsonOpts);
+            await SaveState(state);
         }
+        return state;
+    }
 
-        if (amount <= 0 || amount > player.Chips)
-            throw new InvalidOperationException("Invalid bet amount.");
+    public async Task<BlackjackGameState> PlaceBet(int roomId, string playerName, int amount)
+    {
+        var state = await GetGameState(roomId) ?? throw new InvalidOperationException("No game state");
+        if (state.Phase != "Betting") throw new InvalidOperationException("Not in betting phase");
+
+        var players = JsonSerializer.Deserialize<List<BlackjackPlayer>>(state.PlayersJson, _jsonOpts) ?? [];
+        var player = players.FirstOrDefault(p => p.PlayerName == playerName);
+        if (player == null) throw new InvalidOperationException("Player not in game");
+        if (amount > player.Chips || amount <= 0) throw new InvalidOperationException("Invalid bet amount");
 
         player.Bet = amount;
         player.Chips -= amount;
         player.Status = "Waiting";
-        player.Cards = [];
-
-        await conn.ExecuteAsync(@"
-            UPDATE BlackjackGameStates SET PlayersJson = @PlayersJson WHERE Id = @Id",
-            new { PlayersJson = JsonSerializer.Serialize(players, _jsonOpts), state.Id });
-
         state.PlayersJson = JsonSerializer.Serialize(players, _jsonOpts);
+        await SaveState(state);
         return state;
     }
 
-    /// <summary>
-    /// Deal initial cards (2 to each player, 2 to dealer). Transitions to Playing phase.
-    /// </summary>
     public async Task<BlackjackGameState> DealInitialCards(int roomId)
     {
-        using var conn = GetConnection();
-        await conn.OpenAsync();
-
-        var state = await conn.QuerySingleAsync<BlackjackGameState>(
-            "SELECT TOP 1 * FROM BlackjackGameStates WHERE RoomId = @RoomId ORDER BY Id DESC",
-            new { RoomId = roomId });
-
-        if (state.Phase != "Betting")
-            throw new InvalidOperationException("Cards can only be dealt from the Betting phase.");
-
-        var players = JsonSerializer.Deserialize<List<BlackjackPlayer>>(state.PlayersJson, _jsonOpts) ?? [];
-        if (players.Count == 0 || players.All(p => p.Bet <= 0))
-            throw new InvalidOperationException("At least one player must have placed a bet.");
+        var state = await GetGameState(roomId) ?? throw new InvalidOperationException("No game state");
+        if (state.Phase != "Betting") throw new InvalidOperationException("Not in betting phase");
 
         var deck = JsonSerializer.Deserialize<List<BlackjackCard>>(state.DeckJson, _jsonOpts) ?? [];
-
-        // Reshuffle if running low
-        if (deck.Count < (players.Count + 1) * 10)
-        {
-            deck = GenerateShoe();
-        }
-
+        var players = JsonSerializer.Deserialize<List<BlackjackPlayer>>(state.PlayersJson, _jsonOpts) ?? [];
         var dealerHand = new List<BlackjackCard>();
 
         // Deal 2 cards to each player, then 2 to dealer
-        for (int round = 0; round < 2; round++)
+        foreach (var p in players)
         {
-            foreach (var player in players)
-            {
-                if (player.Bet > 0)
-                {
-                    player.Cards.Add(deck[0]);
-                    deck.RemoveAt(0);
-                }
-            }
-            dealerHand.Add(deck[0]);
-            deck.RemoveAt(0);
+            p.Cards = [DrawCard(deck), DrawCard(deck)];
+            if (IsBlackjack(p.Cards))
+                p.Status = "Blackjack";
+            else
+                p.Status = "Playing";
         }
 
-        // Check for player blackjacks
-        foreach (var player in players)
-        {
-            if (player.Bet > 0 && IsBlackjack(player.Cards))
-            {
-                player.Status = "Blackjack";
-            }
-            else if (player.Bet > 0)
-            {
-                player.Status = "Playing";
-            }
-        }
-
-        // Find the first active (Playing) player
-        int currentIndex = players.FindIndex(p => p.Status == "Playing");
-        string phase = currentIndex >= 0 ? "Playing" : "DealerTurn";
-
-        await conn.ExecuteAsync(@"
-            UPDATE BlackjackGameStates 
-            SET DeckJson = @DeckJson, DealerHandJson = @DealerHandJson, DealerRevealed = 0,
-                Phase = @Phase, CurrentPlayerIndex = @CurrentPlayerIndex, PlayersJson = @PlayersJson
-            WHERE Id = @Id",
-            new
-            {
-                DeckJson = JsonSerializer.Serialize(deck, _jsonOpts),
-                DealerHandJson = JsonSerializer.Serialize(dealerHand, _jsonOpts),
-                Phase = phase,
-                CurrentPlayerIndex = Math.Max(currentIndex, 0),
-                PlayersJson = JsonSerializer.Serialize(players, _jsonOpts),
-                state.Id
-            });
+        dealerHand.Add(DrawCard(deck));
+        dealerHand.Add(DrawCard(deck));
 
         state.DeckJson = JsonSerializer.Serialize(deck, _jsonOpts);
         state.DealerHandJson = JsonSerializer.Serialize(dealerHand, _jsonOpts);
         state.DealerRevealed = false;
-        state.Phase = phase;
-        state.CurrentPlayerIndex = Math.Max(currentIndex, 0);
+        state.CurrentPlayerIndex = 0;
+
+        // Skip players with blackjack
+        while (state.CurrentPlayerIndex < players.Count &&
+               players[state.CurrentPlayerIndex].Status != "Playing")
+        {
+            state.CurrentPlayerIndex++;
+        }
+
+        // If all players have blackjack or no playing players, go to dealer
+        if (state.CurrentPlayerIndex >= players.Count)
+            state.Phase = "DealerTurn";
+        else
+            state.Phase = "Playing";
+
         state.PlayersJson = JsonSerializer.Serialize(players, _jsonOpts);
+        await SaveState(state);
         return state;
     }
 
-    /// <summary>
-    /// Player hits — draw one card. Check for bust.
-    /// </summary>
     public async Task<BlackjackGameState> Hit(int roomId, string playerName)
     {
-        using var conn = GetConnection();
-        await conn.OpenAsync();
+        var state = await GetGameState(roomId) ?? throw new InvalidOperationException("No game state");
+        if (state.Phase != "Playing") throw new InvalidOperationException("Not in playing phase");
 
-        var state = await conn.QuerySingleAsync<BlackjackGameState>(
-            "SELECT TOP 1 * FROM BlackjackGameStates WHERE RoomId = @RoomId ORDER BY Id DESC",
-            new { RoomId = roomId });
-
-        if (state.Phase != "Playing")
-            throw new InvalidOperationException("Can only hit during Playing phase.");
-
-        var players = JsonSerializer.Deserialize<List<BlackjackPlayer>>(state.PlayersJson, _jsonOpts) ?? [];
         var deck = JsonSerializer.Deserialize<List<BlackjackCard>>(state.DeckJson, _jsonOpts) ?? [];
+        var players = JsonSerializer.Deserialize<List<BlackjackPlayer>>(state.PlayersJson, _jsonOpts) ?? [];
+        var player = players[state.CurrentPlayerIndex];
+        if (player.PlayerName != playerName) throw new InvalidOperationException("Not your turn");
 
-        var player = players.FirstOrDefault(p => p.PlayerName == playerName);
-        if (player == null || player.Status != "Playing")
-            throw new InvalidOperationException("It's not this player's turn or player not found.");
+        player.Cards.Add(DrawCard(deck));
+        var val = HandValue(player.Cards);
 
-        // Verify it's their turn
-        if (players.IndexOf(player) != state.CurrentPlayerIndex)
-            throw new InvalidOperationException("It's not this player's turn.");
-
-        // Draw a card
-        player.Cards.Add(deck[0]);
-        deck.RemoveAt(0);
-
-        var handValue = CalculateHandValue(player.Cards);
-        if (handValue > 21)
+        if (val > 21)
         {
             player.Status = "Bust";
-            // Advance to next player
-            AdvanceToNextPlayer(players, state);
+            AdvanceToNextPlayer(state, players);
         }
-        else if (handValue == 21)
+        else if (val == 21)
         {
             player.Status = "Standing";
-            AdvanceToNextPlayer(players, state);
+            AdvanceToNextPlayer(state, players);
         }
 
-        await SaveState(conn, state, deck, players);
+        state.DeckJson = JsonSerializer.Serialize(deck, _jsonOpts);
+        state.PlayersJson = JsonSerializer.Serialize(players, _jsonOpts);
+        await SaveState(state);
         return state;
     }
 
-    /// <summary>
-    /// Player stands — advance to next player or dealer.
-    /// </summary>
     public async Task<BlackjackGameState> Stand(int roomId, string playerName)
     {
-        using var conn = GetConnection();
-        await conn.OpenAsync();
-
-        var state = await conn.QuerySingleAsync<BlackjackGameState>(
-            "SELECT TOP 1 * FROM BlackjackGameStates WHERE RoomId = @RoomId ORDER BY Id DESC",
-            new { RoomId = roomId });
-
-        if (state.Phase != "Playing")
-            throw new InvalidOperationException("Can only stand during Playing phase.");
+        var state = await GetGameState(roomId) ?? throw new InvalidOperationException("No game state");
+        if (state.Phase != "Playing") throw new InvalidOperationException("Not in playing phase");
 
         var players = JsonSerializer.Deserialize<List<BlackjackPlayer>>(state.PlayersJson, _jsonOpts) ?? [];
-        var deck = JsonSerializer.Deserialize<List<BlackjackCard>>(state.DeckJson, _jsonOpts) ?? [];
-
-        var player = players.FirstOrDefault(p => p.PlayerName == playerName);
-        if (player == null || player.Status != "Playing")
-            throw new InvalidOperationException("Player not found or not active.");
-
-        if (players.IndexOf(player) != state.CurrentPlayerIndex)
-            throw new InvalidOperationException("It's not this player's turn.");
+        var player = players[state.CurrentPlayerIndex];
+        if (player.PlayerName != playerName) throw new InvalidOperationException("Not your turn");
 
         player.Status = "Standing";
-        AdvanceToNextPlayer(players, state);
+        AdvanceToNextPlayer(state, players);
 
-        await SaveState(conn, state, deck, players);
+        state.PlayersJson = JsonSerializer.Serialize(players, _jsonOpts);
+        await SaveState(state);
         return state;
     }
 
-    /// <summary>
-    /// Player doubles down — double bet, draw exactly 1 card, then stand.
-    /// </summary>
     public async Task<BlackjackGameState> DoubleDown(int roomId, string playerName)
     {
-        using var conn = GetConnection();
-        await conn.OpenAsync();
+        var state = await GetGameState(roomId) ?? throw new InvalidOperationException("No game state");
+        if (state.Phase != "Playing") throw new InvalidOperationException("Not in playing phase");
 
-        var state = await conn.QuerySingleAsync<BlackjackGameState>(
-            "SELECT TOP 1 * FROM BlackjackGameStates WHERE RoomId = @RoomId ORDER BY Id DESC",
-            new { RoomId = roomId });
-
-        if (state.Phase != "Playing")
-            throw new InvalidOperationException("Can only double down during Playing phase.");
-
-        var players = JsonSerializer.Deserialize<List<BlackjackPlayer>>(state.PlayersJson, _jsonOpts) ?? [];
         var deck = JsonSerializer.Deserialize<List<BlackjackCard>>(state.DeckJson, _jsonOpts) ?? [];
+        var players = JsonSerializer.Deserialize<List<BlackjackPlayer>>(state.PlayersJson, _jsonOpts) ?? [];
+        var player = players[state.CurrentPlayerIndex];
+        if (player.PlayerName != playerName) throw new InvalidOperationException("Not your turn");
+        if (player.Cards.Count != 2) throw new InvalidOperationException("Can only double on first 2 cards");
+        if (player.Chips < player.Bet) throw new InvalidOperationException("Not enough chips to double");
 
-        var player = players.FirstOrDefault(p => p.PlayerName == playerName);
-        if (player == null || player.Status != "Playing")
-            throw new InvalidOperationException("Player not found or not active.");
-
-        if (players.IndexOf(player) != state.CurrentPlayerIndex)
-            throw new InvalidOperationException("It's not this player's turn.");
-
-        if (player.Cards.Count != 2)
-            throw new InvalidOperationException("Can only double down on initial two cards.");
-
-        if (player.Chips < player.Bet)
-            throw new InvalidOperationException("Not enough chips to double down.");
-
-        // Double the bet
         player.Chips -= player.Bet;
         player.Bet *= 2;
+        player.Cards.Add(DrawCard(deck));
 
-        // Draw exactly 1 card
-        player.Cards.Add(deck[0]);
-        deck.RemoveAt(0);
+        if (HandValue(player.Cards) > 21)
+            player.Status = "Bust";
+        else
+            player.Status = "Standing";
 
-        var handValue = CalculateHandValue(player.Cards);
-        player.Status = handValue > 21 ? "Bust" : "Standing";
+        AdvanceToNextPlayer(state, players);
 
-        AdvanceToNextPlayer(players, state);
-
-        await SaveState(conn, state, deck, players);
+        state.DeckJson = JsonSerializer.Serialize(deck, _jsonOpts);
+        state.PlayersJson = JsonSerializer.Serialize(players, _jsonOpts);
+        await SaveState(state);
         return state;
     }
 
-    /// <summary>
-    /// Play the dealer's hand. Dealer hits on soft 17 (<=16), stands on 17+.
-    /// Then resolve all hands and pay out.
-    /// </summary>
     public async Task<BlackjackGameState> PlayDealer(int roomId)
     {
-        using var conn = GetConnection();
-        await conn.OpenAsync();
+        var state = await GetGameState(roomId) ?? throw new InvalidOperationException("No game state");
 
-        var state = await conn.QuerySingleAsync<BlackjackGameState>(
-            "SELECT TOP 1 * FROM BlackjackGameStates WHERE RoomId = @RoomId ORDER BY Id DESC",
-            new { RoomId = roomId });
-
-        if (state.Phase != "DealerTurn")
-            throw new InvalidOperationException("Not in DealerTurn phase.");
-
-        var players = JsonSerializer.Deserialize<List<BlackjackPlayer>>(state.PlayersJson, _jsonOpts) ?? [];
         var deck = JsonSerializer.Deserialize<List<BlackjackCard>>(state.DeckJson, _jsonOpts) ?? [];
         var dealerHand = JsonSerializer.Deserialize<List<BlackjackCard>>(state.DealerHandJson, _jsonOpts) ?? [];
+        var players = JsonSerializer.Deserialize<List<BlackjackPlayer>>(state.PlayersJson, _jsonOpts) ?? [];
 
-        // Check if any players are still standing (non-bust, non-blackjack-already-paid)
+        state.DealerRevealed = true;
+
+        // Check if any players are still in (not all busted)
         bool anyActive = players.Any(p => p.Status == "Standing" || p.Status == "Blackjack");
 
         if (anyActive)
         {
-            // Dealer draws until 17+
-            while (CalculateHandValue(dealerHand) < 17)
+            // Dealer hits until 17+
+            while (HandValue(dealerHand) < 17)
             {
-                dealerHand.Add(deck[0]);
-                deck.RemoveAt(0);
+                dealerHand.Add(DrawCard(deck));
             }
         }
 
-        int dealerValue = CalculateHandValue(dealerHand);
-        bool dealerBust = dealerValue > 21;
-        bool dealerBlackjack = IsBlackjack(dealerHand);
+        int dealerVal = HandValue(dealerHand);
+        bool dealerBust = dealerVal > 21;
+        bool dealerBJ = IsBlackjack(dealerHand);
 
-        // Resolve each player's hand
-        foreach (var player in players)
+        // Resolve each player
+        foreach (var p in players)
         {
-            if (player.Bet <= 0) continue;
-
-            if (player.Status == "Bust")
+            if (p.Status == "Bust")
             {
-                // Already lost their bet
-                player.Status = "Lost";
+                p.Status = "Lost";
                 continue;
             }
 
-            int playerValue = CalculateHandValue(player.Cards);
-            bool playerBJ = player.Status == "Blackjack";
+            int playerVal = HandValue(p.Cards);
+            bool playerBJ = p.Status == "Blackjack";
 
-            if (playerBJ && dealerBlackjack)
+            if (playerBJ && dealerBJ)
             {
-                // Both have blackjack — push
-                player.Status = "Push";
-                player.Chips += player.Bet; // return bet
+                p.Status = "Push";
+                p.Chips += p.Bet; // Return bet
             }
             else if (playerBJ)
             {
-                // Player blackjack pays 3:2
-                player.Status = "Blackjack";
-                int payout = player.Bet + (int)Math.Ceiling(player.Bet * 1.5);
-                player.Chips += payout;
-            }
-            else if (dealerBlackjack)
-            {
-                // Dealer blackjack, player loses
-                player.Status = "Lost";
+                p.Status = "Blackjack";
+                p.Chips += p.Bet + (int)(p.Bet * 1.5); // 3:2 payout
             }
             else if (dealerBust)
             {
-                // Dealer busts, player wins 1:1
-                player.Status = "Won";
-                player.Chips += player.Bet * 2;
+                p.Status = "Won";
+                p.Chips += p.Bet * 2; // 1:1
             }
-            else if (playerValue > dealerValue)
+            else if (playerVal > dealerVal)
             {
-                player.Status = "Won";
-                player.Chips += player.Bet * 2;
+                p.Status = "Won";
+                p.Chips += p.Bet * 2;
             }
-            else if (playerValue == dealerValue)
+            else if (playerVal == dealerVal)
             {
-                player.Status = "Push";
-                player.Chips += player.Bet; // return bet
+                p.Status = "Push";
+                p.Chips += p.Bet;
             }
             else
             {
-                player.Status = "Lost";
+                p.Status = "Lost";
             }
         }
 
         state.Phase = "Payout";
-        state.DealerRevealed = true;
-        state.DealerHandJson = JsonSerializer.Serialize(dealerHand, _jsonOpts);
         state.DeckJson = JsonSerializer.Serialize(deck, _jsonOpts);
+        state.DealerHandJson = JsonSerializer.Serialize(dealerHand, _jsonOpts);
         state.PlayersJson = JsonSerializer.Serialize(players, _jsonOpts);
-
-        await conn.ExecuteAsync(@"
-            UPDATE BlackjackGameStates 
-            SET DeckJson = @DeckJson, DealerHandJson = @DealerHandJson, DealerRevealed = 1,
-                Phase = 'Payout', PlayersJson = @PlayersJson
-            WHERE Id = @Id",
-            new
-            {
-                DeckJson = state.DeckJson,
-                DealerHandJson = state.DealerHandJson,
-                PlayersJson = state.PlayersJson,
-                state.Id
-            });
-
+        await SaveState(state);
         return state;
     }
 
-    /// <summary>
-    /// Start a new round — reset cards/bets but keep chips and players.
-    /// </summary>
     public async Task<BlackjackGameState> NewRound(int roomId)
     {
-        using var conn = GetConnection();
-        await conn.OpenAsync();
-
-        var state = await conn.QuerySingleAsync<BlackjackGameState>(
-            "SELECT TOP 1 * FROM BlackjackGameStates WHERE RoomId = @RoomId ORDER BY Id DESC",
-            new { RoomId = roomId });
-
+        var state = await GetGameState(roomId) ?? throw new InvalidOperationException("No game state");
         var players = JsonSerializer.Deserialize<List<BlackjackPlayer>>(state.PlayersJson, _jsonOpts) ?? [];
+
+        // Reshuffle if deck is getting low (< 78 cards = 25% of shoe)
         var deck = JsonSerializer.Deserialize<List<BlackjackCard>>(state.DeckJson, _jsonOpts) ?? [];
+        if (deck.Count < 78)
+            deck = BuildShoe();
 
-        // Reshuffle if running low
-        if (deck.Count < 60)
+        // Reset players for new round
+        foreach (var p in players)
         {
-            deck = GenerateShoe();
+            p.Cards = [];
+            p.Bet = 0;
+            p.Status = "Waiting";
+            p.InsuranceBet = 0;
+            // Remove busted-out players (0 chips)
         }
+        players = players.Where(p => p.Chips > 0).ToList();
 
-        // Reset each player for new round (keep chips)
-        foreach (var player in players)
-        {
-            player.Cards = [];
-            player.Bet = 0;
-            player.Status = "Waiting";
-            player.InsuranceBet = 0;
-        }
-
-        // Remove players with 0 chips (they're broke)
-        // Actually keep them so they can see, but they can't bet
-
-        var newId = await conn.QuerySingleAsync<int>(@"
-            INSERT INTO BlackjackGameStates (RoomId, DeckJson, DealerHandJson, DealerRevealed, Phase, CurrentPlayerIndex, PlayersJson)
-            OUTPUT INSERTED.Id
-            VALUES (@RoomId, @DeckJson, '[]', 0, 'Betting', 0, @PlayersJson)",
-            new
-            {
-                RoomId = roomId,
-                DeckJson = JsonSerializer.Serialize(deck, _jsonOpts),
-                PlayersJson = JsonSerializer.Serialize(players, _jsonOpts)
-            });
-
-        return new BlackjackGameState
-        {
-            Id = newId,
-            RoomId = roomId,
-            DeckJson = JsonSerializer.Serialize(deck, _jsonOpts),
-            DealerHandJson = "[]",
-            DealerRevealed = false,
-            Phase = "Betting",
-            CurrentPlayerIndex = 0,
-            PlayersJson = JsonSerializer.Serialize(players, _jsonOpts)
-        };
-    }
-
-    /// <summary>
-    /// Ensure a player exists in the game state (called on join).
-    /// </summary>
-    public async Task<BlackjackGameState> EnsurePlayer(int roomId, string playerName)
-    {
-        using var conn = GetConnection();
-        await conn.OpenAsync();
-
-        var state = await conn.QuerySingleOrDefaultAsync<BlackjackGameState>(
-            "SELECT TOP 1 * FROM BlackjackGameStates WHERE RoomId = @RoomId ORDER BY Id DESC",
-            new { RoomId = roomId });
-
-        if (state == null)
-        {
-            state = await InitializeGame(roomId);
-        }
-
-        var players = JsonSerializer.Deserialize<List<BlackjackPlayer>>(state.PlayersJson, _jsonOpts) ?? [];
-        if (players.All(p => p.PlayerName != playerName))
-        {
-            players.Add(new BlackjackPlayer { PlayerName = playerName, Chips = 1000 });
-            await conn.ExecuteAsync(
-                "UPDATE BlackjackGameStates SET PlayersJson = @PlayersJson WHERE Id = @Id",
-                new { PlayersJson = JsonSerializer.Serialize(players, _jsonOpts), state.Id });
-            state.PlayersJson = JsonSerializer.Serialize(players, _jsonOpts);
-        }
-
+        state.DeckJson = JsonSerializer.Serialize(deck, _jsonOpts);
+        state.DealerHandJson = "[]";
+        state.DealerRevealed = false;
+        state.Phase = "Betting";
+        state.CurrentPlayerIndex = 0;
+        state.PlayersJson = JsonSerializer.Serialize(players, _jsonOpts);
+        await SaveState(state);
         return state;
     }
 
     /// <summary>
-    /// Create a sanitized copy of the state — hides dealer's hole card when not revealed.
+    /// Convert DB state to a JSON string suitable for broadcasting, hiding dealer hole card when appropriate.
     /// </summary>
     public static string SanitizeState(BlackjackGameState state)
     {
-        var players = JsonSerializer.Deserialize<List<BlackjackPlayer>>(state.PlayersJson, _jsonOpts) ?? [];
         var dealerHand = JsonSerializer.Deserialize<List<BlackjackCard>>(state.DealerHandJson, _jsonOpts) ?? [];
+        var players = JsonSerializer.Deserialize<List<BlackjackPlayer>>(state.PlayersJson, _jsonOpts) ?? [];
 
-        List<BlackjackCard?> visibleDealerHand;
-        int dealerVisibleValue;
-
-        if (state.DealerRevealed || state.Phase == "Payout")
+        // Hide dealer hole card during play
+        var visibleDealerHand = dealerHand;
+        if (!state.DealerRevealed && dealerHand.Count >= 2)
         {
-            visibleDealerHand = dealerHand.Cast<BlackjackCard?>().ToList();
-            dealerVisibleValue = CalculateHandValue(dealerHand);
-        }
-        else if (dealerHand.Count >= 2)
-        {
-            // Show only the first card, second is hidden
-            visibleDealerHand = [dealerHand[0], null];
-            dealerVisibleValue = CalculateHandValue([dealerHand[0]]);
-        }
-        else
-        {
-            visibleDealerHand = dealerHand.Cast<BlackjackCard?>().ToList();
-            dealerVisibleValue = CalculateHandValue(dealerHand);
+            visibleDealerHand = [dealerHand[0], new BlackjackCard { Rank = 0, Suit = "Hidden" }];
         }
 
-        var sanitized = new
+        var response = new BlackjackStateResponse
         {
-            id = state.Id,
-            roomId = state.RoomId,
-            dealerHand = visibleDealerHand,
-            dealerValue = dealerVisibleValue,
-            dealerRevealed = state.DealerRevealed,
-            phase = state.Phase,
-            currentPlayerIndex = state.CurrentPlayerIndex,
-            players = players.Select(p => new
-            {
-                playerName = p.PlayerName,
-                cards = p.Cards,
-                handValue = CalculateHandValue(p.Cards),
-                bet = p.Bet,
-                chips = p.Chips,
-                status = p.Status,
-                insuranceBet = p.InsuranceBet
-            })
+            Id = state.Id,
+            RoomId = state.RoomId,
+            DealerHand = visibleDealerHand,
+            DealerRevealed = state.DealerRevealed,
+            Phase = state.Phase,
+            CurrentPlayerIndex = state.CurrentPlayerIndex,
+            Players = players
         };
 
-        return JsonSerializer.Serialize(sanitized, _jsonOpts);
+        return JsonSerializer.Serialize(response, _jsonOpts);
     }
 
-    // ===== Private helpers =====
-
-    /// <summary>
-    /// Advance to the next active player, or transition to DealerTurn if none left.
-    /// </summary>
-    private void AdvanceToNextPlayer(List<BlackjackPlayer> players, BlackjackGameState state)
+    private void AdvanceToNextPlayer(BlackjackGameState state, List<BlackjackPlayer> players)
     {
-        int nextIndex = state.CurrentPlayerIndex + 1;
-        while (nextIndex < players.Count)
+        state.CurrentPlayerIndex++;
+        while (state.CurrentPlayerIndex < players.Count &&
+               players[state.CurrentPlayerIndex].Status != "Playing")
         {
-            if (players[nextIndex].Status == "Playing")
-            {
-                state.CurrentPlayerIndex = nextIndex;
-                state.PlayersJson = JsonSerializer.Serialize(players, _jsonOpts);
-                return;
-            }
-            nextIndex++;
+            state.CurrentPlayerIndex++;
         }
-        // No more active players — dealer's turn
-        state.Phase = "DealerTurn";
-        state.PlayersJson = JsonSerializer.Serialize(players, _jsonOpts);
-    }
 
-    private async Task SaveState(SqlConnection conn, BlackjackGameState state, List<BlackjackCard> deck, List<BlackjackPlayer> players)
-    {
-        state.DeckJson = JsonSerializer.Serialize(deck, _jsonOpts);
-        state.PlayersJson = JsonSerializer.Serialize(players, _jsonOpts);
-
-        await conn.ExecuteAsync(@"
-            UPDATE BlackjackGameStates 
-            SET DeckJson = @DeckJson, DealerHandJson = @DealerHandJson, DealerRevealed = @DealerRevealed,
-                Phase = @Phase, CurrentPlayerIndex = @CurrentPlayerIndex, PlayersJson = @PlayersJson
-            WHERE Id = @Id",
-            new
-            {
-                DeckJson = state.DeckJson,
-                DealerHandJson = state.DealerHandJson,
-                DealerRevealed = state.DealerRevealed,
-                Phase = state.Phase,
-                CurrentPlayerIndex = state.CurrentPlayerIndex,
-                PlayersJson = state.PlayersJson,
-                state.Id
-            });
+        if (state.CurrentPlayerIndex >= players.Count)
+        {
+            state.Phase = "DealerTurn";
+        }
     }
 }
