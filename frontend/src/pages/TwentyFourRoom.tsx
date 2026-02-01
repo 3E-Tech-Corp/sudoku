@@ -104,7 +104,7 @@ function PlayingCard({
       onClick={onClick}
       disabled={used || faceDown}
       className={`
-        relative w-[72px] h-[100px] sm:w-[88px] sm:h-[124px] rounded-xl border-2 transition-all duration-300 flex items-center justify-center overflow-hidden
+        relative w-[64px] h-[90px] sm:w-[88px] sm:h-[124px] rounded-lg sm:rounded-xl border-2 transition-all duration-300 flex items-center justify-center overflow-hidden
         ${faceDown
           ? 'border-blue-700 cursor-default shadow-md'
           : selected
@@ -174,7 +174,7 @@ function OperatorButton({
     <button
       onClick={onClick}
       className={`
-        min-w-[48px] min-h-[48px] w-14 h-14 sm:w-16 sm:h-16 rounded-2xl text-2xl sm:text-3xl font-bold transition-all
+        min-w-[44px] min-h-[44px] w-11 h-11 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-xl sm:rounded-2xl text-xl sm:text-2xl md:text-3xl font-bold transition-all
         ${selected
           ? 'bg-purple-600 text-white border-2 border-purple-400 shadow-[0_0_12px_rgba(147,51,234,0.5)] scale-105'
           : 'bg-gray-700 text-gray-200 border-2 border-gray-600 hover:bg-purple-900/50 hover:border-purple-500 active:scale-95'
@@ -204,7 +204,7 @@ function EquationRow({
 
   return (
     <div className={`
-      flex items-center gap-2 sm:gap-3 p-3 sm:p-4 rounded-xl transition-all
+      flex items-center gap-1.5 sm:gap-3 p-2 sm:p-4 rounded-lg sm:rounded-xl transition-all
       ${row.locked
         ? 'bg-green-900/20 border border-green-700/30'
         : isActive
@@ -212,14 +212,14 @@ function EquationRow({
         : 'bg-gray-800/50 border border-gray-700/30 opacity-50'
       }
     `}>
-      <span className="text-gray-500 text-xs w-4 flex-shrink-0">R{rowIndex + 1}</span>
+      <span className="text-gray-500 text-[10px] sm:text-xs w-3 sm:w-4 flex-shrink-0">R{rowIndex + 1}</span>
 
       {/* Card 1 slot */}
       <button
         onClick={() => !row.locked && isActive && onSlotClick('card1')}
         disabled={row.locked || !isActive}
         className={`
-          w-12 h-12 sm:w-14 sm:h-14 rounded-lg flex items-center justify-center text-lg font-bold transition-all
+          w-10 h-10 sm:w-14 sm:h-14 rounded-md sm:rounded-lg flex items-center justify-center text-base sm:text-lg font-bold transition-all
           ${row.card1 !== null
             ? 'bg-white text-gray-800 border-2 border-blue-400'
             : isActive
@@ -231,10 +231,10 @@ function EquationRow({
         {row.card1 !== null ? row.card1 : '?'}
       </button>
 
-      {/* Operator slot — display only (filled by tapping operator buttons above) */}
+      {/* Operator slot — display only */}
       <div
         className={`
-          w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-xl font-bold
+          w-8 h-8 sm:w-12 sm:h-12 rounded-md sm:rounded-lg flex items-center justify-center text-base sm:text-xl font-bold
           ${row.operator
             ? 'bg-purple-600 text-white border-2 border-purple-400'
             : isActive
@@ -251,7 +251,7 @@ function EquationRow({
         onClick={() => !row.locked && isActive && onSlotClick('card2')}
         disabled={row.locked || !isActive}
         className={`
-          w-12 h-12 sm:w-14 sm:h-14 rounded-lg flex items-center justify-center text-lg font-bold transition-all
+          w-10 h-10 sm:w-14 sm:h-14 rounded-md sm:rounded-lg flex items-center justify-center text-base sm:text-lg font-bold transition-all
           ${row.card2 !== null
             ? 'bg-white text-gray-800 border-2 border-blue-400'
             : isActive
@@ -264,11 +264,11 @@ function EquationRow({
       </button>
 
       {/* = sign */}
-      <span className="text-gray-400 text-xl font-bold">=</span>
+      <span className="text-gray-400 text-lg sm:text-xl font-bold">=</span>
 
       {/* Result */}
       <div className={`
-        w-12 h-12 sm:w-14 sm:h-14 rounded-lg flex items-center justify-center text-lg font-bold
+        w-10 h-10 sm:w-14 sm:h-14 rounded-md sm:rounded-lg flex items-center justify-center text-base sm:text-lg font-bold
         ${row.result !== null
           ? row.result === 24 && isFinal
             ? 'bg-green-600 text-white border-2 border-green-400 animate-pulse'
@@ -936,25 +936,25 @@ export default function TwentyFourRoom() {
   return (
     <div className={`min-h-screen transition-colors duration-500 ${getBackgroundClass(visuals.background)}`}>
       {/* Header */}
-      <header className="border-b border-gray-800/50 px-4 py-3">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <button onClick={() => navigate('/games/24')} className="text-gray-400 hover:text-white transition-colors text-sm">
-            &larr; Back
+      <header className="border-b border-gray-800/50 px-2 sm:px-4 py-2 sm:py-3">
+        <div className="max-w-5xl mx-auto flex items-center justify-between gap-2">
+          <button onClick={() => navigate('/games/24')} className="text-gray-400 hover:text-white transition-colors text-xs sm:text-sm flex-shrink-0">
+            ← Back
           </button>
-          <h1 className="text-white font-bold text-lg">
-            <span className="text-amber-400">24</span> Card Game
+          <h1 className="text-white font-bold text-sm sm:text-lg truncate">
+            <span className="text-amber-400">24</span> Game
             {isCompetitive && (
-              <span className="ml-2 text-xs font-medium px-2 py-0.5 rounded bg-orange-900/30 text-orange-400">⚔️ Race</span>
+              <span className="ml-1 sm:ml-2 text-[10px] sm:text-xs font-medium px-1.5 py-0.5 rounded bg-orange-900/30 text-orange-400">⚔️</span>
             )}
             {isPractice && (
-              <span className="ml-2 text-xs font-medium px-2 py-0.5 rounded bg-emerald-900/30 text-emerald-400">🎯 Practice</span>
+              <span className="ml-1 sm:ml-2 text-[10px] sm:text-xs font-medium px-1.5 py-0.5 rounded bg-emerald-900/30 text-emerald-400">🎯</span>
             )}
           </h1>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-3 flex-shrink-0">
             <RoomSettings visuals={visuals} onChange={handleVisualsChange} />
             <VideoChat connection={connRef.current} roomCode={code || ''} myName={myName} myColor={myColor} />
-            <span className="text-gray-500 text-sm flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: myColor }} />
+            <span className="text-gray-500 text-xs sm:text-sm items-center gap-1.5 hidden sm:flex">
+              <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: myColor }} />
               {myName}
             </span>
           </div>
@@ -996,17 +996,17 @@ export default function TwentyFourRoom() {
         </div>
       )}
 
-      <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
-        <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 items-start justify-center">
+      <div className="max-w-5xl mx-auto px-2 sm:px-4 py-3 sm:py-6">
+        <div className="flex flex-col lg:flex-row gap-3 sm:gap-6 items-start justify-center">
           {/* Main game area */}
           <div className="flex-1 max-w-lg mx-auto w-full">
             {/* Hand info + stopwatch */}
-            <div className="flex items-center justify-between mb-4">
-              <div className="text-gray-500 text-sm">
+            <div className="flex items-center justify-between mb-2 sm:mb-4">
+              <div className="text-gray-500 text-xs sm:text-sm">
                 <span>Hand #{handNumber}</span>
                 {!isPractice && (
                   <>
-                    <span className="text-gray-600 mx-1.5">•</span>
+                    <span className="text-gray-600 mx-1">•</span>
                     <span className="font-mono text-blue-400">{room.code}</span>
                   </>
                 )}
@@ -1109,10 +1109,10 @@ export default function TwentyFourRoom() {
               if (opPos === 'left' || opPos === 'right') {
                 return (
                   <>
-                    <div className="flex gap-3 sm:gap-4 items-stretch mb-5">
+                    <div className="flex gap-2 sm:gap-4 items-stretch mb-3 sm:mb-5">
                       {opPos === 'left' && operatorButtons(true)}
                       <div
-                        className="relative rounded-2xl sm:rounded-3xl p-4 sm:p-6 flex-1 border-4 border-amber-900/80 shadow-[inset_0_2px_20px_rgba(0,0,0,0.4),0_4px_12px_rgba(0,0,0,0.3)]"
+                        className="relative rounded-xl sm:rounded-3xl p-3 sm:p-6 flex-1 border-3 sm:border-4 border-amber-900/80 shadow-[inset_0_2px_20px_rgba(0,0,0,0.4),0_4px_12px_rgba(0,0,0,0.3)]"
                         style={feltStyle}
                       >
                         {feltOverlay}
@@ -1128,13 +1128,13 @@ export default function TwentyFourRoom() {
               return (
                 <>
                   <div
-                    className="relative rounded-2xl sm:rounded-3xl p-4 sm:p-6 mb-5 border-4 border-amber-900/80 shadow-[inset_0_2px_20px_rgba(0,0,0,0.4),0_4px_12px_rgba(0,0,0,0.3)]"
+                    className="relative rounded-xl sm:rounded-3xl p-3 sm:p-6 mb-3 sm:mb-5 border-3 sm:border-4 border-amber-900/80 shadow-[inset_0_2px_20px_rgba(0,0,0,0.4),0_4px_12px_rgba(0,0,0,0.3)]"
                     style={feltStyle}
                   >
                     {feltOverlay}
                     {cardsSection}
                   </div>
-                  <div className="mb-5">
+                  <div className="mb-3 sm:mb-5">
                     {operatorButtons(false)}
                   </div>
                 </>
@@ -1142,7 +1142,7 @@ export default function TwentyFourRoom() {
             })()}
 
             {/* 3. Equation rows */}
-            <div className="space-y-3 mb-6">
+            <div className="space-y-2 sm:space-y-3 mb-4 sm:mb-6">
               {rows.map((row, i) => (
                 <EquationRow
                   key={i}
@@ -1155,11 +1155,11 @@ export default function TwentyFourRoom() {
             </div>
 
             {/* Action buttons */}
-            <div className="flex justify-center gap-3 flex-wrap">
+            <div className="flex justify-center gap-2 sm:gap-3 flex-wrap">
               <button
                 onClick={undoCurrentRow}
                 disabled={!rows[activeRow] || (rows[activeRow].card1 === null && rows[activeRow].operator === null)}
-                className="px-4 py-3 bg-gray-700 hover:bg-gray-600 disabled:opacity-30 text-gray-200 font-medium rounded-xl transition-all"
+                className="px-3 py-2 sm:px-4 sm:py-3 bg-gray-700 hover:bg-gray-600 disabled:opacity-30 text-gray-200 text-sm sm:text-base font-medium rounded-lg sm:rounded-xl transition-all"
               >
                 ↩ Undo
               </button>
@@ -1178,13 +1178,13 @@ export default function TwentyFourRoom() {
                     }
                   }
                 }}
-                className="px-4 py-3 bg-gray-700 hover:bg-gray-600 text-gray-200 font-medium rounded-xl transition-all"
+                className="px-3 py-2 sm:px-4 sm:py-3 bg-gray-700 hover:bg-gray-600 text-gray-200 text-sm sm:text-base font-medium rounded-lg sm:rounded-xl transition-all"
               >
                 🔄 Reset
               </button>
               <button
                 onClick={skipHand}
-                className="px-4 py-3 bg-gray-700 hover:bg-red-900/50 text-gray-400 hover:text-red-300 font-medium rounded-xl transition-all"
+                className="px-3 py-2 sm:px-4 sm:py-3 bg-gray-700 hover:bg-red-900/50 text-gray-400 hover:text-red-300 text-sm sm:text-base font-medium rounded-lg sm:rounded-xl transition-all"
               >
                 Skip ⏭
               </button>
@@ -1192,7 +1192,7 @@ export default function TwentyFourRoom() {
           </div>
 
           {/* Sidebar */}
-          <div className="w-full lg:w-64 flex-shrink-0 space-y-4">
+          <div className="w-full lg:w-64 flex-shrink-0 space-y-3 sm:space-y-4">
             {isCompetitive && room.timeLimitSeconds && (
               <GameTimer
                 connection={connRef.current}
@@ -1202,7 +1202,7 @@ export default function TwentyFourRoom() {
                 onTimerExpired={() => setTimerExpired(true)}
               />
             )}
-            <div className="bg-gray-800 rounded-2xl border border-gray-700 p-6">
+            <div className="bg-gray-800 rounded-xl sm:rounded-2xl border border-gray-700 p-4 sm:p-6">
               {!isPractice && (
                 <div className="mb-4">
                   <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-1">Room Code</h3>

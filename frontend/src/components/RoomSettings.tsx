@@ -123,7 +123,7 @@ export default function RoomSettings({ visuals, onChange }: RoomSettingsProps) {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 z-50 w-80 bg-gray-800 border border-gray-700 rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+        <div className="absolute right-0 top-full mt-2 z-50 w-72 sm:w-80 bg-gray-800 border border-gray-700 rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
           {/* Tabs */}
           <div className="flex border-b border-gray-700">
             <button
