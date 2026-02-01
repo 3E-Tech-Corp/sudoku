@@ -157,15 +157,15 @@ public class GameHub : Hub
         int? computedResult = op switch
         {
             "+" => card1 + card2,
-            "-" => card1 - card2 > 0 ? card1 - card2 : null,
+            "-" => card1 - card2 >= 0 ? card1 - card2 : null,
             "*" => card1 * card2,
-            "/" when card2 != 0 && card1 % card2 == 0 => card1 / card2 > 0 ? card1 / card2 : null,
+            "/" when card2 != 0 && card1 % card2 == 0 => card1 / card2,
             _ => null
         };
 
         if (computedResult == null)
         {
-            await Clients.Caller.SendAsync("24Error", "Invalid operation — result must be a positive integer");
+            await Clients.Caller.SendAsync("24Error", "Invalid operation — result must be a non-negative integer");
             return;
         }
 

@@ -501,7 +501,7 @@ export default function TwentyFourRoom() {
     // Auto-calculate and auto-lock when all 3 slots filled
     if (newRow.card1 !== null && newRow.card2 !== null && newRow.operator !== null) {
       const result = calculateResult(newRow.card1, newRow.operator, newRow.card2);
-      if (result !== null && result > 0 && Number.isInteger(result)) {
+      if (result !== null && result >= 0 && Number.isInteger(result)) {
         newRow.result = result;
         newRow.locked = true;
         newRows[activeRow] = newRow;
@@ -541,7 +541,7 @@ export default function TwentyFourRoom() {
         return;
       } else {
         newRow.result = null;
-        setErrorMsg('Result must be a positive whole number. Try different numbers or operator.');
+        setErrorMsg('Result must be a non-negative whole number. Try different numbers or operator.');
         sounds.error();
         setTimeout(() => setErrorMsg(''), 3000);
       }
@@ -564,7 +564,7 @@ export default function TwentyFourRoom() {
     // Auto-calculate and auto-lock when all 3 slots filled
     if (newRow.card1 !== null && newRow.card2 !== null) {
       const result = calculateResult(newRow.card1, op, newRow.card2);
-      if (result !== null && result > 0 && Number.isInteger(result)) {
+      if (result !== null && result >= 0 && Number.isInteger(result)) {
         newRow.result = result;
         newRow.locked = true;
         newRows[activeRow] = newRow;
@@ -604,7 +604,7 @@ export default function TwentyFourRoom() {
         return;
       } else {
         newRow.result = null;
-        setErrorMsg('Result must be a positive whole number. Try a different operator.');
+        setErrorMsg('Result must be a non-negative whole number. Try a different operator.');
         sounds.error();
         setTimeout(() => setErrorMsg(''), 3000);
       }
@@ -1008,9 +1008,9 @@ export default function TwentyFourRoom() {
 function calculateResult(a: number, op: string, b: number): number | null {
   switch (op) {
     case '+': return a + b;
-    case '-': return a - b > 0 ? a - b : null;
+    case '-': return a - b >= 0 ? a - b : null;
     case '*': return a * b;
-    case '/': return b !== 0 && a % b === 0 && a / b > 0 ? a / b : null;
+    case '/': return b !== 0 && a % b === 0 ? a / b : null;
     default: return null;
   }
 }

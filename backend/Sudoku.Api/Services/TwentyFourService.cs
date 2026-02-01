@@ -110,7 +110,7 @@ public class TwentyFourService
 
     /// <summary>
     /// Check if there exists at least one valid solution for 4 numbers that makes 24.
-    /// Solutions must use positive integer intermediate results only.
+    /// Solutions must use non-negative integer intermediate results.
     /// </summary>
     public static bool HasSolution(int a, int b, int c, int d)
     {
@@ -119,7 +119,7 @@ public class TwentyFourService
 
     /// <summary>
     /// Find all valid 3-step solutions for 4 numbers that make 24.
-    /// Each step must produce a positive integer.
+    /// Each step must produce a non-negative integer (0 allowed as mid-step).
     /// </summary>
     public static List<List<TwentyFourStep>> FindAllSolutions(int a, int b, int c, int d)
     {
@@ -190,7 +190,7 @@ public class TwentyFourService
     private static string[] GetOps() => ["+", "-", "*", "/"];
 
     /// <summary>
-    /// Apply operation. Returns null if result is not a positive integer.
+    /// Apply operation. Returns null if result is not a non-negative integer.
     /// </summary>
     private static int? ApplyOp(int a, string op, int b)
     {
@@ -202,7 +202,7 @@ public class TwentyFourService
             "/" when b != 0 && a % b == 0 => a / b,
             _ => -1
         };
-        return result > 0 ? result : null;
+        return result >= 0 ? result : null;
     }
 
     private static List<int[]> GetPermutations(int[] arr)
@@ -228,7 +228,7 @@ public class TwentyFourService
     }
 
     /// <summary>
-    /// Validate a single step: card1 op card2 = result, where result is a positive integer
+    /// Validate a single step: card1 op card2 = result, where result is a non-negative integer
     /// </summary>
     public static bool ValidateStep(int card1, string operation, int card2, int result)
     {
