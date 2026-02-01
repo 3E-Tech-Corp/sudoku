@@ -11,6 +11,8 @@ public class GameHub : Hub
     private readonly RoomService _roomService;
     private readonly TwentyFourService _twentyFourService;
 
+    private static readonly JsonSerializerOptions _jsonOpts = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+
     // Track connection → (roomCode, displayName) for peer list
     private static readonly ConcurrentDictionary<string, (string RoomCode, string DisplayName)> _connections = new();
 
@@ -136,9 +138,9 @@ public class GameHub : Hub
             gameState = await _twentyFourService.InitializeGame(room.Id);
         }
 
-        var cards = JsonSerializer.Deserialize<List<TwentyFourCard>>(gameState.CardsJson);
+        var cards = JsonSerializer.Deserialize<List<TwentyFourCard>>(gameState.CardsJson, _jsonOpts);
         await Clients.Group(code).SendAsync("24NewHand",
-            JsonSerializer.Serialize(cards),
+            JsonSerializer.Serialize(cards, _jsonOpts),
             gameState.HandNumber,
             gameState.ScoresJson);
     }
@@ -189,7 +191,7 @@ public class GameHub : Hub
         var room = await _roomService.GetRoomByCode(code);
         if (room == null || room.GameType != "TwentyFour") return;
 
-        var steps = JsonSerializer.Deserialize<List<TwentyFourStep>>(stepsJson);
+        var steps = JsonSerializer.Deserialize<List<TwentyFourStep>>(stepsJson, _jsonOpts);
         if (steps == null || steps.Count != 3)
         {
             await Clients.Caller.SendAsync("24Error", "Invalid solution format");
@@ -203,7 +205,7 @@ public class GameHub : Hub
             return;
         }
 
-        var cards = JsonSerializer.Deserialize<List<TwentyFourCard>>(gameState.CardsJson);
+        var cards = JsonSerializer.Deserialize<List<TwentyFourCard>>(gameState.CardsJson, _jsonOpts);
         if (cards == null || cards.Count != 4)
         {
             await Clients.Caller.SendAsync("24Error", "Invalid game state");
@@ -219,13 +221,13 @@ public class GameHub : Hub
 
         var (newState, scores) = await _twentyFourService.RecordWinAndDealNew(room.Id, gameState.Id, player, steps);
 
-        await Clients.Group(code).SendAsync("24GameWon", player, stepsJson, JsonSerializer.Serialize(scores));
+        await Clients.Group(code).SendAsync("24GameWon", player, stepsJson, JsonSerializer.Serialize(scores, _jsonOpts));
 
-        var newCards = JsonSerializer.Deserialize<List<TwentyFourCard>>(newState.CardsJson);
+        var newCards = JsonSerializer.Deserialize<List<TwentyFourCard>>(newState.CardsJson, _jsonOpts);
         await Clients.Group(code).SendAsync("24NewHand",
-            JsonSerializer.Serialize(newCards),
+            JsonSerializer.Serialize(newCards, _jsonOpts),
             newState.HandNumber,
-            JsonSerializer.Serialize(scores));
+            JsonSerializer.Serialize(scores, _jsonOpts));
     }
 
     /// <summary>
@@ -248,11 +250,11 @@ public class GameHub : Hub
         }
 
         var newState = await _twentyFourService.SkipAndDealNew(room.Id, gameState.Id);
-        var newCards = JsonSerializer.Deserialize<List<TwentyFourCard>>(newState.CardsJson);
+        var newCards = JsonSerializer.Deserialize<List<TwentyFourCard>>(newState.CardsJson, _jsonOpts);
 
         await Clients.Group(code).SendAsync("24HandSkipped", requester);
         await Clients.Group(code).SendAsync("24NewHand",
-            JsonSerializer.Serialize(newCards),
+            JsonSerializer.Serialize(newCards, _jsonOpts),
             newState.HandNumber,
             newState.ScoresJson);
     }
@@ -317,11 +319,11 @@ public class GameHub : Hub
         if (gameState == null || gameState.Status != "Playing") return;
 
         var newState = await _twentyFourService.SkipAndDealNew(room.Id, gameState.Id);
-        var newCards = JsonSerializer.Deserialize<List<TwentyFourCard>>(newState.CardsJson);
+        var newCards = JsonSerializer.Deserialize<List<TwentyFourCard>>(newState.CardsJson, _jsonOpts);
 
         await Clients.Group(code).SendAsync("24HandSkipped", player);
         await Clients.Group(code).SendAsync("24NewHand",
-            JsonSerializer.Serialize(newCards),
+            JsonSerializer.Serialize(newCards, _jsonOpts),
             newState.HandNumber,
             newState.ScoresJson);
     }
@@ -413,6 +415,6 @@ public class GameHub : Hub
             .Select(kvp => new { connectionId = kvp.Key, displayName = kvp.Value.DisplayName })
             .ToList();
 
-        await Clients.Caller.SendAsync("PeerList", JsonSerializer.Serialize(peers));
+        await Clients.Caller.SendAsync("PeerList", JsonSerializer.Serialize(peers, _jsonOpts));
     }
 }

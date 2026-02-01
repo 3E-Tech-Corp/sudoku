@@ -36,7 +36,7 @@ public class RoomService
 
     private string GenerateCode()
     {
-        const string chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        const string chars = "0123456789";
         return new string(Enumerable.Range(0, 6).Select(_ => chars[_rng.Next(chars.Length)]).ToArray());
     }
 

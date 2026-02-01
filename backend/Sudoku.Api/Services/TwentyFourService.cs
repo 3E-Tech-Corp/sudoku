@@ -10,6 +10,7 @@ public class TwentyFourService
     private readonly string _connectionString;
     private static readonly Random _rng = new();
     private static readonly string[] Suits = ["Hearts", "Diamonds", "Clubs", "Spades"];
+    private static readonly JsonSerializerOptions _jsonOpts = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
     public TwentyFourService(IConfiguration config)
     {
@@ -281,16 +282,16 @@ public class TwentyFourService
             new
             {
                 RoomId = roomId,
-                CardsJson = JsonSerializer.Serialize(dealt),
-                DeckJson = JsonSerializer.Serialize(remaining)
+                CardsJson = JsonSerializer.Serialize(dealt, _jsonOpts),
+                DeckJson = JsonSerializer.Serialize(remaining, _jsonOpts)
             });
 
         return new TwentyFourGameState
         {
             Id = id,
             RoomId = roomId,
-            CardsJson = JsonSerializer.Serialize(dealt),
-            DeckJson = JsonSerializer.Serialize(remaining),
+            CardsJson = JsonSerializer.Serialize(dealt, _jsonOpts),
+            DeckJson = JsonSerializer.Serialize(remaining, _jsonOpts),
             HandNumber = 1,
             Status = "Playing",
             ScoresJson = "{}"
@@ -334,13 +335,13 @@ public class TwentyFourService
             new
             {
                 Winner = winnerName,
-                Steps = JsonSerializer.Serialize(steps),
-                Scores = JsonSerializer.Serialize(scores),
+                Steps = JsonSerializer.Serialize(steps, _jsonOpts),
+                Scores = JsonSerializer.Serialize(scores, _jsonOpts),
                 Id = gameStateId
             });
 
         // Deal new hand
-        var deck = JsonSerializer.Deserialize<List<TwentyFourCard>>(state.DeckJson) ?? [];
+        var deck = JsonSerializer.Deserialize<List<TwentyFourCard>>(state.DeckJson, _jsonOpts) ?? [];
         if (deck.Count < 4)
         {
             deck = GenerateDeck(); // reshuffle full deck
@@ -355,21 +356,21 @@ public class TwentyFourService
             new
             {
                 RoomId = roomId,
-                CardsJson = JsonSerializer.Serialize(dealt),
-                DeckJson = JsonSerializer.Serialize(remaining),
+                CardsJson = JsonSerializer.Serialize(dealt, _jsonOpts),
+                DeckJson = JsonSerializer.Serialize(remaining, _jsonOpts),
                 HandNumber = state.HandNumber + 1,
-                Scores = JsonSerializer.Serialize(scores)
+                Scores = JsonSerializer.Serialize(scores, _jsonOpts)
             });
 
         return (new TwentyFourGameState
         {
             Id = newId,
             RoomId = roomId,
-            CardsJson = JsonSerializer.Serialize(dealt),
-            DeckJson = JsonSerializer.Serialize(remaining),
+            CardsJson = JsonSerializer.Serialize(dealt, _jsonOpts),
+            DeckJson = JsonSerializer.Serialize(remaining, _jsonOpts),
             HandNumber = state.HandNumber + 1,
             Status = "Playing",
-            ScoresJson = JsonSerializer.Serialize(scores)
+            ScoresJson = JsonSerializer.Serialize(scores, _jsonOpts)
         }, scores);
     }
 
@@ -390,7 +391,7 @@ public class TwentyFourService
             new { Id = gameStateId });
 
         // Deal new
-        var deck = JsonSerializer.Deserialize<List<TwentyFourCard>>(state.DeckJson) ?? [];
+        var deck = JsonSerializer.Deserialize<List<TwentyFourCard>>(state.DeckJson, _jsonOpts) ?? [];
         if (deck.Count < 4) deck = GenerateDeck();
 
         var (dealt, remaining) = Deal4Cards(deck);
@@ -403,8 +404,8 @@ public class TwentyFourService
             new
             {
                 RoomId = roomId,
-                CardsJson = JsonSerializer.Serialize(dealt),
-                DeckJson = JsonSerializer.Serialize(remaining),
+                CardsJson = JsonSerializer.Serialize(dealt, _jsonOpts),
+                DeckJson = JsonSerializer.Serialize(remaining, _jsonOpts),
                 HandNumber = state.HandNumber + 1,
                 Scores = scores
             });
@@ -413,8 +414,8 @@ public class TwentyFourService
         {
             Id = newId,
             RoomId = roomId,
-            CardsJson = JsonSerializer.Serialize(dealt),
-            DeckJson = JsonSerializer.Serialize(remaining),
+            CardsJson = JsonSerializer.Serialize(dealt, _jsonOpts),
+            DeckJson = JsonSerializer.Serialize(remaining, _jsonOpts),
             HandNumber = state.HandNumber + 1,
             Status = "Playing",
             ScoresJson = scores
