@@ -6,7 +6,7 @@ import { sounds } from '../services/sounds';
 import VideoChat from '../components/VideoChat';
 import GameTimer from '../components/GameTimer';
 import DeckPicker from '../components/DeckPicker';
-import { getSavedThemeId, saveThemeId, getThemeById, type DeckTheme } from '../config/deckThemes';
+import { getSavedThemeId, saveThemeId, getThemeById } from '../config/deckThemes';
 import confetti from 'canvas-confetti';
 import type { HubConnection } from '@microsoft/signalr';
 
@@ -75,7 +75,7 @@ function emptyRow(): RowState {
   return { card1: null, operator: null, card2: null, result: null, locked: false };
 }
 
-// ===== Card Visual Component =====
+// ===== Card Visual Component (uses real SVG card images) =====
 
 function PlayingCard({
   card,
@@ -85,7 +85,7 @@ function PlayingCard({
   onClick,
   animDelay,
   faceDown,
-  theme,
+  themeId,
 }: {
   card: TwentyFourCard | { number: number; suit: string };
   selected?: boolean;
@@ -94,41 +94,26 @@ function PlayingCard({
   onClick?: () => void;
   animDelay?: number;
   faceDown?: boolean;
-  theme: DeckTheme;
+  themeId?: string;
 }) {
+  const theme = getThemeById(themeId || 'classic');
   const isRealCard = card.suit === 'Hearts' || card.suit === 'Diamonds' || card.suit === 'Clubs' || card.suit === 'Spades';
-
-  const isRed = card.suit === 'Hearts' || card.suit === 'Diamonds';
-  const suitSymbol =
-    card.suit === 'Hearts' ? '♥' :
-    card.suit === 'Diamonds' ? '♦' :
-    card.suit === 'Clubs' ? '♣' :
-    card.suit === 'Spades' ? '♠' : '★';
-
-  const displayNum =
-    card.number === 1 ? 'A' :
-    card.number === 11 ? 'J' :
-    card.number === 12 ? 'Q' :
-    card.number === 13 ? 'K' :
-    String(card.number);
-
-  const imgStyle: React.CSSProperties = theme.imgFilter ? { filter: theme.imgFilter } : {};
 
   return (
     <button
       onClick={onClick}
       disabled={used || faceDown}
       className={`
-        relative w-16 h-24 sm:w-20 sm:h-28 rounded-xl transition-all duration-300 overflow-hidden
+        relative w-20 h-28 sm:w-[88px] sm:h-[124px] rounded-xl border-2 transition-all duration-300 flex items-center justify-center overflow-hidden
         ${faceDown
-          ? 'cursor-default'
+          ? 'border-blue-700 cursor-default shadow-md'
           : selected
-          ? 'shadow-[0_0_15px_rgba(250,204,21,0.5)] scale-105 ring-2 ring-yellow-400'
+          ? 'border-yellow-400 shadow-[0_0_15px_rgba(250,204,21,0.5)] scale-105 bg-white'
           : used
-          ? 'opacity-40 cursor-not-allowed grayscale'
+          ? 'border-gray-600 opacity-40 cursor-not-allowed bg-gray-700'
           : isResult
-          ? 'border-2 border-amber-400 hover:border-amber-300 hover:shadow-lg cursor-pointer'
-          : 'hover:shadow-lg cursor-pointer active:scale-95 hover:ring-2 hover:ring-blue-400'
+          ? 'border-amber-400 hover:border-amber-300 hover:shadow-lg cursor-pointer bg-gradient-to-b from-amber-50 to-amber-100'
+          : 'border-gray-300 hover:border-blue-400 hover:shadow-lg cursor-pointer active:scale-95 bg-white'
         }
       `}
       style={{ animationDelay: animDelay ? `${animDelay}ms` : undefined }}
@@ -137,37 +122,34 @@ function PlayingCard({
         <img
           src={theme.backUrl}
           alt="Card back"
-          className="w-full h-full object-fill rounded-xl"
-          style={imgStyle}
+          className="w-full h-full object-fill rounded-lg"
           draggable={false}
         />
       ) : isRealCard ? (
         <>
           <img
             src={theme.cardUrl(card.number, card.suit)}
-            alt={`${displayNum} of ${card.suit}`}
-            className="w-full h-full object-fill rounded-lg"
-            style={imgStyle}
+            alt={`${card.number} of ${card.suit}`}
+            className="w-full h-full object-contain rounded-lg"
+            style={theme.imgFilter ? { filter: theme.imgFilter } : undefined}
             draggable={false}
           />
           {isResult && (
-            <div className="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 rounded-full flex items-center justify-center">
-              <span className="text-[8px] text-white font-bold">R</span>
+            <div className="absolute -top-1 -right-1 w-5 h-5 bg-amber-500 rounded-full flex items-center justify-center shadow">
+              <span className="text-[9px] text-white font-bold">R</span>
             </div>
           )}
         </>
       ) : (
-        /* Result card (intermediate value) — styled display */
-        <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-amber-50 to-amber-100 rounded-xl border-0">
-          <div className={`text-2xl sm:text-3xl font-bold ${isRed ? 'text-red-500' : 'text-gray-800'}`}>
-            {displayNum}
+        /* Result card (intermediate value) */
+        <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-amber-50 to-amber-100 rounded-lg">
+          <div className="text-2xl sm:text-3xl font-bold text-gray-800">
+            {card.number}
           </div>
-          <div className={`text-lg sm:text-xl ${isRed ? 'text-red-500' : 'text-gray-800'}`}>
-            {suitSymbol}
-          </div>
+          <div className="text-xs text-amber-600 font-medium mt-1">Result</div>
           {isResult && (
-            <div className="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 rounded-full flex items-center justify-center">
-              <span className="text-[8px] text-white font-bold">R</span>
+            <div className="absolute -top-1 -right-1 w-5 h-5 bg-amber-500 rounded-full flex items-center justify-center shadow">
+              <span className="text-[9px] text-white font-bold">R</span>
             </div>
           )}
         </div>
@@ -176,7 +158,7 @@ function PlayingCard({
   );
 }
 
-// ===== Operator Button (large, touch-friendly) =====
+// ===== Operator Button (large, touch-friendly, min 48×48) =====
 
 function OperatorButton({
   op,
@@ -204,7 +186,7 @@ function OperatorButton({
   );
 }
 
-// ===== Equation Row Component (operator as display-only field) =====
+// ===== Equation Row (operator slot is display-only) =====
 
 function EquationRow({
   row,
@@ -249,7 +231,7 @@ function EquationRow({
         {row.card1 !== null ? row.card1 : '?'}
       </button>
 
-      {/* Operator slot — display only (filled by operator buttons above) */}
+      {/* Operator slot — display only (filled by tapping operator buttons above) */}
       <div
         className={`
           w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-xl font-bold
@@ -314,11 +296,10 @@ export default function TwentyFourRoom() {
   const [error, setError] = useState('');
   const connRef = useRef<HubConnection | null>(null);
 
-  // Deck theme
-  const [deckThemeId, setDeckThemeId] = useState(getSavedThemeId);
-  const deckTheme = getThemeById(deckThemeId);
+  // Deck theme (persisted in localStorage via deckThemes helper)
+  const [themeId, setThemeId] = useState(getSavedThemeId);
   const handleThemeChange = useCallback((id: string) => {
-    setDeckThemeId(id);
+    setThemeId(id);
     saveThemeId(id);
   }, []);
 
@@ -326,10 +307,8 @@ export default function TwentyFourRoom() {
   const [cards, setCards] = useState<TwentyFourCard[]>([]);
   const [rows, setRows] = useState<RowState[]>([emptyRow(), emptyRow(), emptyRow()]);
   const [activeRow, setActiveRow] = useState(0);
-  // Track which source is placed in each slot: key = "row-card1" | "row-card2", value = source key
-  // Source keys: "card-0" .. "card-3" for original cards, "result-0" .. "result-2" for row results
   const [placements, setPlacements] = useState<Record<string, string>>({});
-  const [resultCards, setResultCards] = useState<Map<number, number>>(new Map()); // rowIndex -> result value
+  const [resultCards, setResultCards] = useState<Map<number, number>>(new Map());
   const [handNumber, setHandNumber] = useState(1);
   const [scores, setScores] = useState<Record<string, number>>({});
   const [showWin, setShowWin] = useState<string | null>(null);
@@ -352,29 +331,20 @@ export default function TwentyFourRoom() {
     setFaceDown(true);
     setDealing(true);
 
-    // Deal animation: face down first, then flip
-    setTimeout(() => {
-      setDealing(false);
-    }, 300);
-    setTimeout(() => {
-      setFaceDown(false);
-      sounds.flip();
-    }, 800);
+    setTimeout(() => { setDealing(false); }, 300);
+    setTimeout(() => { setFaceDown(false); sounds.flip(); }, 800);
   }, []);
 
   const joinAndLoad = useCallback(
     async (displayName: string) => {
       if (!code) return;
       try {
-        const resp = await api.post<JoinResponse>(`/rooms/${code}/join`, {
-          displayName,
-        });
+        const resp = await api.post<JoinResponse>(`/rooms/${code}/join`, { displayName });
         setMyName(resp.displayName);
         setMyColor(resp.color);
         setRoom(resp.room);
         localStorage.setItem('sudoku_name', displayName);
 
-        // Parse game state
         if (resp.room.twentyFourState) {
           const gs = resp.room.twentyFourState;
           const parsedCards: TwentyFourCard[] = JSON.parse(gs.cardsJson);
@@ -385,18 +355,13 @@ export default function TwentyFourRoom() {
           setFaceDown(true);
           setDealing(true);
           setTimeout(() => setDealing(false), 300);
-          setTimeout(() => {
-            setFaceDown(false);
-            sounds.flip();
-          }, 800);
+          setTimeout(() => { setFaceDown(false); sounds.flip(); }, 800);
         }
 
-        // Connect SignalR
         const conn = await startGameConnection();
         connRef.current = conn;
         await conn.invoke('JoinRoom', code, displayName);
 
-        // SignalR events
         conn.on('PlayerJoined', (_playerName: string) => {
           api.get<RoomData>(`/rooms/${code}`).then((r) => {
             setRoom((prev) => prev ? { ...prev, members: r.members, playerColors: r.playerColors } : prev);
@@ -414,27 +379,10 @@ export default function TwentyFourRoom() {
           const newScores = JSON.parse(scoresJson);
           setScores(newScores);
           sounds.win();
-
-          // Fire confetti
-          confetti({
-            particleCount: 150,
-            spread: 100,
-            origin: { y: 0.6 },
-            colors: ['#FFD700', '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7'],
-          });
+          confetti({ particleCount: 150, spread: 100, origin: { y: 0.6 }, colors: ['#FFD700', '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7'] });
           setTimeout(() => {
-            confetti({
-              particleCount: 80,
-              angle: 60,
-              spread: 55,
-              origin: { x: 0 },
-            });
-            confetti({
-              particleCount: 80,
-              angle: 120,
-              spread: 55,
-              origin: { x: 1 },
-            });
+            confetti({ particleCount: 80, angle: 60, spread: 55, origin: { x: 0 } });
+            confetti({ particleCount: 80, angle: 120, spread: 55, origin: { x: 1 } });
           }, 300);
         });
 
@@ -443,35 +391,19 @@ export default function TwentyFourRoom() {
           const newScores = JSON.parse(scoresJson);
           setHandNumber(handNum);
           setScores(newScores);
-          setTimeout(() => {
-            setShowWin(null);
-            resetForNewHand(newCards);
-            sounds.shuffle();
-          }, 2000); // Show win for 2 seconds before new hand
+          setTimeout(() => { setShowWin(null); resetForNewHand(newCards); sounds.shuffle(); }, 2000);
         });
 
-        conn.on('24HandSkipped', (_player: string) => {
-          // Will be followed by 24NewHand
-        });
+        conn.on('24HandSkipped', (_player: string) => {});
 
         conn.on('24RowCompleted', (_player: string, row: number, card1: number, op: string, card2: number, result: number) => {
-          // In cooperative mode, apply other players' moves
-          setRows((prev) => {
-            const newRows = [...prev];
-            newRows[row] = { card1, operator: op, card2, result, locked: true };
-            return newRows;
-          });
+          setRows((prev) => { const n = [...prev]; n[row] = { card1, operator: op, card2, result, locked: true }; return n; });
           setResultCards((prev) => new Map(prev).set(row, result));
         });
 
-        conn.on('24ProgressUpdated', (_player: string, _completedRows: number) => {
-          // Update opponent progress display (future enhancement)
-        });
+        conn.on('24ProgressUpdated', (_player: string, _completedRows: number) => {});
 
-        conn.on('24Error', (msg: string) => {
-          setErrorMsg(msg);
-          setTimeout(() => setErrorMsg(''), 3000);
-        });
+        conn.on('24Error', (msg: string) => { setErrorMsg(msg); setTimeout(() => setErrorMsg(''), 3000); });
 
         setLoading(false);
       } catch (err) {
@@ -483,23 +415,11 @@ export default function TwentyFourRoom() {
   );
 
   useEffect(() => {
-    if (!code) {
-      navigate('/');
-      return;
-    }
-
+    if (!code) { navigate('/'); return; }
     const savedName = localStorage.getItem('sudoku_name');
-    if (savedName) {
-      joinAndLoad(savedName);
-    } else {
-      setLoading(false);
-      setNeedsName(true);
-    }
-
+    if (savedName) { joinAndLoad(savedName); } else { setLoading(false); setNeedsName(true); }
     return () => {
-      if (connRef.current) {
-        connRef.current.invoke('LeaveRoom', code, myName).catch(() => {});
-      }
+      if (connRef.current) connRef.current.invoke('LeaveRoom', code, myName).catch(() => {});
       stopGameConnection();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -516,7 +436,6 @@ export default function TwentyFourRoom() {
   // Place a number into the current row
   const placeNumber = useCallback((value: number, sourceKey: string) => {
     if (faceDown || !selectingFor) return;
-
     const row = rows[activeRow];
     if (row.locked) return;
 
@@ -531,11 +450,9 @@ export default function TwentyFourRoom() {
       newRow.card2 = value;
     }
 
-    // Track which source is placed in this slot
     const slotKey = `${activeRow}-${selectingFor}`;
     setPlacements((prev) => ({ ...prev, [slotKey]: sourceKey }));
 
-    // Auto-calculate result when both cards and operator are filled
     if (newRow.card1 !== null && newRow.card2 !== null && newRow.operator !== null) {
       const result = calculateResult(newRow.card1, newRow.operator, newRow.card2);
       if (result !== null && result > 0 && Number.isInteger(result)) {
@@ -554,7 +471,7 @@ export default function TwentyFourRoom() {
     sounds.cardPlace();
   }, [faceDown, selectingFor, rows, activeRow]);
 
-  // Place an operator
+  // Place an operator into the active row
   const placeOperator = useCallback((op: string) => {
     if (faceDown) return;
     const row = rows[activeRow];
@@ -563,7 +480,6 @@ export default function TwentyFourRoom() {
     const newRows = [...rows];
     const newRow = { ...row, operator: op };
 
-    // Auto-calculate if cards are already placed
     if (newRow.card1 !== null && newRow.card2 !== null) {
       const result = calculateResult(newRow.card1, op, newRow.card2);
       if (result !== null && result > 0 && Number.isInteger(result)) {
@@ -589,30 +505,19 @@ export default function TwentyFourRoom() {
     const newRows = [...rows];
     newRows[activeRow] = { ...row, locked: true };
     setRows(newRows);
-
-    // Store result as available
     setResultCards((prev) => new Map(prev).set(activeRow, row.result!));
 
-    // Check if final row equals 24
     if (activeRow === 2 && row.result === 24) {
-      // WIN!
       const steps: TwentyFourStep[] = newRows.map((r) => ({
-        card1: r.card1!,
-        operation: r.operator!,
-        card2: r.card2!,
-        result: r.result!,
+        card1: r.card1!, operation: r.operator!, card2: r.card2!, result: r.result!,
       }));
-
-      if (connRef.current && code) {
-        connRef.current.invoke('Win24Game', code, myName, JSON.stringify(steps));
-      }
+      if (connRef.current && code) connRef.current.invoke('Win24Game', code, myName, JSON.stringify(steps));
       return;
     }
 
     if (activeRow === 2 && row.result !== 24) {
       setErrorMsg('Final result must equal 24! Undo and try again.');
       sounds.error();
-      // Unlock the row so user can try again
       newRows[activeRow] = { ...row, locked: false };
       setRows(newRows);
       setTimeout(() => setErrorMsg(''), 3000);
@@ -622,30 +527,24 @@ export default function TwentyFourRoom() {
     sounds.rowComplete();
     setActiveRow((prev) => prev + 1);
 
-    // Broadcast in cooperative mode
     if (connRef.current && code && room?.mode === 'Cooperative') {
       connRef.current.invoke('Complete24Row', code, myName, activeRow, row.card1, row.operator, row.card2, row.result);
     }
   }, [rows, activeRow, code, myName, room?.mode]);
 
-  // Undo: clear current row
+  // Undo current row
   const undoCurrentRow = useCallback(() => {
     const row = rows[activeRow];
     if (row.locked) return;
-
-    // Clear the row
     const newRows = [...rows];
     newRows[activeRow] = emptyRow();
     setRows(newRows);
-
-    // Remove placements for this row
     setPlacements((prev) => {
       const newP = { ...prev };
       delete newP[`${activeRow}-card1`];
       delete newP[`${activeRow}-card2`];
       return newP;
     });
-
     setSelectingFor(null);
     setErrorMsg('');
     sounds.undo();
@@ -653,25 +552,17 @@ export default function TwentyFourRoom() {
 
   // Skip hand
   const skipHand = useCallback(() => {
-    if (connRef.current && code) {
-      connRef.current.invoke('Skip24Hand', code, myName);
-    }
+    if (connRef.current && code) connRef.current.invoke('Skip24Hand', code, myName);
   }, [code, myName]);
 
   // Handle slot click in equation row
   const handleSlotClick = useCallback((slot: 'card1' | 'card2') => {
     const row = rows[activeRow];
-    // If slot already has a value, remove it
     if (slot === 'card1' && row.card1 !== null) {
       const newRows = [...rows];
       newRows[activeRow] = { ...row, card1: null, result: null };
       setRows(newRows);
-      // Remove placement tracking for this slot
-      setPlacements((prev) => {
-        const newP = { ...prev };
-        delete newP[`${activeRow}-card1`];
-        return newP;
-      });
+      setPlacements((prev) => { const p = { ...prev }; delete p[`${activeRow}-card1`]; return p; });
       setSelectingFor(null);
       sounds.undo();
       return;
@@ -680,20 +571,16 @@ export default function TwentyFourRoom() {
       const newRows = [...rows];
       newRows[activeRow] = { ...row, card2: null, result: null };
       setRows(newRows);
-      setPlacements((prev) => {
-        const newP = { ...prev };
-        delete newP[`${activeRow}-card2`];
-        return newP;
-      });
+      setPlacements((prev) => { const p = { ...prev }; delete p[`${activeRow}-card2`]; return p; });
       setSelectingFor(null);
       sounds.undo();
       return;
     }
-
     setSelectingFor(slot);
   }, [rows, activeRow]);
 
-  // Name entry screen
+  // ===== Render =====
+
   if (needsName) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center px-4">
@@ -717,10 +604,7 @@ export default function TwentyFourRoom() {
                 className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
-            <button
-              type="submit"
-              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
-            >
+            <button type="submit" className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors">
               Join Game
             </button>
           </form>
@@ -756,8 +640,6 @@ export default function TwentyFourRoom() {
   const isCompetitive = room.mode === 'Competitive';
   const currentRow = rows[activeRow];
   const canLock = currentRow && currentRow.card1 !== null && currentRow.card2 !== null && currentRow.operator !== null && currentRow.result !== null && !currentRow.locked;
-
-  // Derive which source keys are currently in use from placements
   const usedSourceKeys = new Set(Object.values(placements));
 
   return (
@@ -771,19 +653,12 @@ export default function TwentyFourRoom() {
           <h1 className="text-white font-bold text-lg">
             <span className="text-amber-400">24</span> Card Game
             {isCompetitive && (
-              <span className="ml-2 text-xs font-medium px-2 py-0.5 rounded bg-orange-900/30 text-orange-400">
-                ⚔️ Race
-              </span>
+              <span className="ml-2 text-xs font-medium px-2 py-0.5 rounded bg-orange-900/30 text-orange-400">⚔️ Race</span>
             )}
           </h1>
           <div className="flex items-center gap-3">
-            <DeckPicker currentThemeId={deckThemeId} onChange={handleThemeChange} />
-            <VideoChat
-              connection={connRef.current}
-              roomCode={code || ''}
-              myName={myName}
-              myColor={myColor}
-            />
+            <DeckPicker currentThemeId={themeId} onChange={handleThemeChange} />
+            <VideoChat connection={connRef.current} roomCode={code || ''} myName={myName} myColor={myColor} />
             <span className="text-gray-500 text-sm flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: myColor }} />
               {myName}
@@ -833,7 +708,9 @@ export default function TwentyFourRoom() {
               <span className="text-gray-500 text-sm">Room: <span className="font-mono text-blue-400">{room.code}</span></span>
             </div>
 
-            {/* 1. Dealt cards at the top */}
+            {/* ── NEW LAYOUT ── */}
+
+            {/* 1. Dealt cards at top */}
             <div className="flex justify-center gap-3 sm:gap-4 mb-4">
               {cards.map((card, i) => {
                 const isUsed = usedSourceKeys.has(`card-${i}`);
@@ -848,11 +725,9 @@ export default function TwentyFourRoom() {
                       used={isUsed && !selectingFor}
                       selected={false}
                       faceDown={faceDown}
-                      theme={deckTheme}
+                      themeId={themeId}
                       onClick={() => {
-                        if (selectingFor && !isUsed) {
-                          placeNumber(card.number, `card-${i}`);
-                        }
+                        if (selectingFor && !isUsed) placeNumber(card.number, `card-${i}`);
                       }}
                     />
                   </div>
@@ -871,11 +746,9 @@ export default function TwentyFourRoom() {
                       card={{ number: value, suit: 'Results' }}
                       isResult
                       used={isUsed && !selectingFor}
-                      theme={deckTheme}
+                      themeId={themeId}
                       onClick={() => {
-                        if (selectingFor && !isUsed) {
-                          placeNumber(value, `result-${rowIdx}`);
-                        }
+                        if (selectingFor && !isUsed) placeNumber(value, `result-${rowIdx}`);
                       }}
                     />
                   );
@@ -892,7 +765,7 @@ export default function TwentyFourRoom() {
               </div>
             )}
 
-            {/* 2. Operator buttons — large, touch-friendly, always visible */}
+            {/* 2. Operator buttons — large, touch-friendly, always visible between cards and rows */}
             <div className="flex justify-center gap-4 mb-5">
               {['+', '-', '*', '/'].map((op) => (
                 <OperatorButton
@@ -918,7 +791,7 @@ export default function TwentyFourRoom() {
             </div>
 
             {/* Action buttons */}
-            <div className="flex justify-center gap-3">
+            <div className="flex justify-center gap-3 flex-wrap">
               {canLock && (
                 <button
                   onClick={lockRow}
@@ -936,7 +809,6 @@ export default function TwentyFourRoom() {
               </button>
               <button
                 onClick={() => {
-                  // Full reset
                   setRows([emptyRow(), emptyRow(), emptyRow()]);
                   setActiveRow(0);
                   setPlacements({});
@@ -960,7 +832,6 @@ export default function TwentyFourRoom() {
 
           {/* Sidebar */}
           <div className="w-full lg:w-64 flex-shrink-0 space-y-4">
-            {/* Timer */}
             {isCompetitive && room.timeLimitSeconds && (
               <GameTimer
                 connection={connRef.current}
@@ -971,12 +842,9 @@ export default function TwentyFourRoom() {
               />
             )}
             <div className="bg-gray-800 rounded-2xl border border-gray-700 p-6">
-              {/* Room Info */}
               <div className="mb-4">
                 <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-1">Room Code</h3>
-                <div className="font-mono text-2xl font-bold text-white tracking-widest text-center py-1">
-                  {room.code}
-                </div>
+                <div className="font-mono text-2xl font-bold text-white tracking-widest text-center py-1">{room.code}</div>
                 <button
                   onClick={() => navigator.clipboard.writeText(`${window.location.origin}/room/${room.code}`)}
                   className="mt-2 w-full py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
@@ -985,7 +853,6 @@ export default function TwentyFourRoom() {
                 </button>
               </div>
 
-              {/* Scores */}
               {Object.keys(scores).length > 0 && (
                 <div className="mb-4">
                   <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-2">Scores</h3>
@@ -993,15 +860,11 @@ export default function TwentyFourRoom() {
                     {Object.entries(scores)
                       .sort(([, a], [, b]) => b - a)
                       .map(([name, score], idx) => (
-                        <div
-                          key={name}
-                          className="flex items-center justify-between p-2 rounded-lg bg-gray-700/50"
-                        >
+                        <div key={name} className="flex items-center justify-between p-2 rounded-lg bg-gray-700/50">
                           <div className="flex items-center gap-2">
                             <span className="text-sm">{idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '  '}</span>
                             <span className="text-white text-sm font-medium">
-                              {name}
-                              {name === myName && <span className="text-gray-400 text-xs ml-1">(you)</span>}
+                              {name}{name === myName && <span className="text-gray-400 text-xs ml-1">(you)</span>}
                             </span>
                           </div>
                           <span className="text-amber-400 font-bold">{score}</span>
@@ -1011,28 +874,20 @@ export default function TwentyFourRoom() {
                 </div>
               )}
 
-              {/* Players */}
               <div>
-                <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-2">
-                  Players ({room.members.length})
-                </h3>
+                <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-2">Players ({room.members.length})</h3>
                 <div className="space-y-1">
                   {room.members.map((member) => (
                     <div key={member.displayName} className="flex items-center gap-2 p-2 rounded-lg bg-gray-700/50">
-                      <div
-                        className="w-3 h-3 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: member.color }}
-                      />
+                      <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: member.color }} />
                       <span className="text-white text-sm truncate">
-                        {member.displayName}
-                        {member.displayName === myName && <span className="text-gray-400 text-xs ml-1">(you)</span>}
+                        {member.displayName}{member.displayName === myName && <span className="text-gray-400 text-xs ml-1">(you)</span>}
                       </span>
                     </div>
                   ))}
                 </div>
               </div>
 
-              {/* How to play */}
               <div className="mt-4 pt-4 border-t border-gray-700">
                 <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-2">How to Play</h3>
                 <div className="text-gray-500 text-xs space-y-1">
