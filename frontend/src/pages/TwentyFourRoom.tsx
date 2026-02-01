@@ -952,7 +952,7 @@ export default function TwentyFourRoom() {
           </h1>
           <div className="flex items-center gap-1.5 sm:gap-3 flex-shrink-0">
             <RoomSettings visuals={visuals} onChange={handleVisualsChange} />
-            <VideoChat connection={connRef.current} roomCode={code || ''} myName={myName} myColor={myColor} />
+            <VideoChat connection={connRef.current} roomCode={code || ''} myName={myName} myColor={myColor} videoPosition={visuals.videoPosition} />
             <span className="text-gray-500 text-xs sm:text-sm items-center gap-1.5 hidden sm:flex">
               <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: myColor }} />
               {myName}

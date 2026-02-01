@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { HubConnection } from '@microsoft/signalr';
+import type { VideoPosition } from './RoomSettings';
 
 interface Peer {
   connectionId: string;
@@ -13,6 +14,7 @@ interface VideoChatProps {
   roomCode: string;
   myName: string;
   myColor: string;
+  videoPosition?: VideoPosition;
 }
 
 const ICE_SERVERS: RTCConfiguration = {
@@ -22,7 +24,14 @@ const ICE_SERVERS: RTCConfiguration = {
   ],
 };
 
-export default function VideoChat({ connection, roomCode, myName, myColor }: VideoChatProps) {
+const POSITION_CLASSES: Record<string, string> = {
+  'top-left': 'fixed top-16 left-4 z-50',
+  'top-right': 'fixed top-16 right-4 z-50',
+  'bottom-left': 'fixed bottom-4 left-4 z-50',
+  'bottom-right': 'fixed bottom-4 right-4 z-50',
+};
+
+export default function VideoChat({ connection, roomCode, myName, myColor, videoPosition = 'inline' }: VideoChatProps) {
   const [expanded, setExpanded] = useState(false);
   const [cameraOn, setCameraOn] = useState(false);
   const [micOn, setMicOn] = useState(false);
@@ -267,100 +276,126 @@ export default function VideoChat({ connection, roomCode, myName, myColor }: Vid
 
   const peerArray = Array.from(peers.values());
   const hasAnyVideo = cameraOn || peerArray.some((p) => p.stream);
+  const isFloating = videoPosition !== 'inline' && POSITION_CLASSES[videoPosition];
 
-  return (
-    <div className="relative">
-      {/* Toggle button — always visible */}
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className={`
-          flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all
-          ${expanded
-            ? 'bg-purple-600 text-white'
-            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-          }
-        `}
-      >
-        📹 Video {expanded ? '▾' : '▸'}
-        {peerArray.length > 0 && (
-          <span className="w-5 h-5 bg-green-500 rounded-full text-[10px] flex items-center justify-center text-white font-bold">
-            {peerArray.length}
-          </span>
-        )}
-      </button>
-
-      {/* Expanded panel */}
-      {expanded && (
-        <div className="mt-2 bg-gray-800 rounded-2xl border border-gray-700 p-3 w-72">
-          {/* Control buttons */}
-          <div className="flex gap-2 mb-3">
-            <button
-              onClick={toggleCamera}
-              className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1.5 ${
-                cameraOn
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-              }`}
-            >
-              {cameraOn ? '📷' : '📷'} {cameraOn ? 'Cam On' : 'Cam Off'}
-            </button>
-            <button
-              onClick={toggleMic}
-              disabled={!localStream}
-              className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1.5 ${
-                micOn
-                  ? 'bg-green-600 text-white'
-                  : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-              } disabled:opacity-30`}
-            >
-              {micOn ? '🎙️ Mic On' : '🔇 Mic Off'}
-            </button>
-          </div>
-
-          {/* Video grid */}
-          <div className={`grid gap-2 ${
-            peerArray.length === 0 ? 'grid-cols-1' :
-            peerArray.length <= 1 ? 'grid-cols-2' :
-            'grid-cols-2'
-          }`}>
-            {/* Local video */}
-            <div className="relative rounded-lg overflow-hidden bg-gray-900 aspect-[4/3]">
-              <video
-                ref={localVideoRef}
-                autoPlay
-                playsInline
-                muted
-                className={`w-full h-full object-cover ${!cameraOn ? 'hidden' : ''}`}
-              />
-              {!cameraOn && (
-                <div className="w-full h-full flex items-center justify-center">
-                  <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm"
-                    style={{ backgroundColor: myColor }}
-                  >
-                    {myName.charAt(0).toUpperCase()}
-                  </div>
-                </div>
-              )}
-              <div className="absolute bottom-1 left-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">
-                You {!micOn && '🔇'}
-              </div>
-            </div>
-
-            {/* Remote peers */}
-            {peerArray.map((peer) => (
-              <PeerVideo key={peer.connectionId} peer={peer} />
-            ))}
-          </div>
-
-          {!hasAnyVideo && peerArray.length === 0 && (
-            <p className="text-gray-500 text-xs text-center mt-2">
-              Turn on your camera to start video chat
-            </p>
-          )}
+  const videoPanel = (
+    <div className={`bg-gray-800 rounded-2xl border border-gray-700 p-3 w-72 ${isFloating ? 'shadow-2xl' : 'mt-2'}`}>
+      {/* Drag handle / title for floating */}
+      {isFloating && (
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-gray-400 text-[10px] font-semibold uppercase tracking-wider">📹 Video Chat</span>
+          <button
+            onClick={() => setExpanded(false)}
+            className="text-gray-500 hover:text-gray-300 transition-colors text-sm leading-none"
+            title="Minimize"
+          >
+            ✕
+          </button>
         </div>
       )}
+
+      {/* Control buttons */}
+      <div className="flex gap-2 mb-3">
+        <button
+          onClick={toggleCamera}
+          className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1.5 ${
+            cameraOn
+              ? 'bg-blue-600 text-white'
+              : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+          }`}
+        >
+          {cameraOn ? '📷' : '📷'} {cameraOn ? 'Cam On' : 'Cam Off'}
+        </button>
+        <button
+          onClick={toggleMic}
+          disabled={!localStream}
+          className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1.5 ${
+            micOn
+              ? 'bg-green-600 text-white'
+              : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+          } disabled:opacity-30`}
+        >
+          {micOn ? '🎙️ Mic On' : '🔇 Mic Off'}
+        </button>
+      </div>
+
+      {/* Video grid */}
+      <div className={`grid gap-2 ${
+        peerArray.length === 0 ? 'grid-cols-1' :
+        peerArray.length <= 1 ? 'grid-cols-2' :
+        'grid-cols-2'
+      }`}>
+        {/* Local video */}
+        <div className="relative rounded-lg overflow-hidden bg-gray-900 aspect-[4/3]">
+          <video
+            ref={localVideoRef}
+            autoPlay
+            playsInline
+            muted
+            className={`w-full h-full object-cover ${!cameraOn ? 'hidden' : ''}`}
+          />
+          {!cameraOn && (
+            <div className="w-full h-full flex items-center justify-center">
+              <div
+                className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm"
+                style={{ backgroundColor: myColor }}
+              >
+                {myName.charAt(0).toUpperCase()}
+              </div>
+            </div>
+          )}
+          <div className="absolute bottom-1 left-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">
+            You {!micOn && '🔇'}
+          </div>
+        </div>
+
+        {/* Remote peers */}
+        {peerArray.map((peer) => (
+          <PeerVideo key={peer.connectionId} peer={peer} />
+        ))}
+      </div>
+
+      {!hasAnyVideo && peerArray.length === 0 && (
+        <p className="text-gray-500 text-xs text-center mt-2">
+          Turn on your camera to start video chat
+        </p>
+      )}
     </div>
+  );
+
+  return (
+    <>
+      {/* Toggle button — always in the header */}
+      <div className="relative">
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className={`
+            flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all
+            ${expanded
+              ? 'bg-purple-600 text-white'
+              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+            }
+          `}
+        >
+          📹 Video {expanded ? '▾' : '▸'}
+          {peerArray.length > 0 && (
+            <span className="w-5 h-5 bg-green-500 rounded-full text-[10px] flex items-center justify-center text-white font-bold">
+              {peerArray.length}
+            </span>
+          )}
+        </button>
+
+        {/* Inline panel (default) */}
+        {expanded && !isFloating && videoPanel}
+      </div>
+
+      {/* Floating panel (corner positions) */}
+      {expanded && isFloating && (
+        <div className={POSITION_CLASSES[videoPosition]}>
+          {videoPanel}
+        </div>
+      )}
+    </>
   );
 }
 

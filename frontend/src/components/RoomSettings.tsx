@@ -3,6 +3,8 @@ import { DECK_THEMES, type DeckTheme } from '../config/deckThemes';
 
 // ===== Types =====
 
+export type VideoPosition = 'inline' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+
 export interface RoomVisuals {
   background: string;
   feltColor: string;
@@ -10,6 +12,7 @@ export interface RoomVisuals {
   operatorPosition: 'center' | 'left' | 'right';
   deckThemeId: string;
   clockStyle: 'none' | 'minimal' | 'digital' | 'analog';
+  videoPosition: VideoPosition;
 }
 
 // ===== Presets =====
@@ -45,6 +48,7 @@ export function getDefaultVisuals(): RoomVisuals {
     operatorPosition: 'center',
     deckThemeId: 'classic',
     clockStyle: 'digital',
+    videoPosition: 'inline',
   };
 }
 
@@ -60,6 +64,7 @@ export function getSavedVisuals(): RoomVisuals {
         operatorPosition: ['left', 'right', 'center'].includes(p.operatorPosition) ? p.operatorPosition : 'center',
         deckThemeId: DECK_THEMES.some((t: DeckTheme) => t.id === p.deckThemeId) ? p.deckThemeId : 'classic',
         clockStyle: ['none', 'minimal', 'digital', 'analog'].includes(p.clockStyle) ? p.clockStyle : 'digital',
+        videoPosition: ['inline', 'top-left', 'top-right', 'bottom-left', 'bottom-right'].includes(p.videoPosition) ? p.videoPosition : 'inline',
       };
     }
   } catch { /* ignore */ }
@@ -307,6 +312,37 @@ export default function RoomSettings({ visuals, onChange }: RoomSettingsProps) {
                         >
                           <div className={`text-xs font-semibold ${active ? 'text-purple-300' : 'text-white'}`}>{opt.label}</div>
                           <div className="text-[10px] text-gray-400 mt-0.5">{opt.desc}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Video Window Position */}
+                <div>
+                  <h4 className="text-gray-400 text-xs font-semibold uppercase tracking-wider mb-2">📹 Video Window</h4>
+                  <div className="grid grid-cols-3 gap-2">
+                    {([
+                      { value: 'inline' as VideoPosition, label: 'Inline', icon: '📌', desc: 'In header' },
+                      { value: 'top-left' as VideoPosition, label: 'Top Left', icon: '◤', desc: 'Float TL' },
+                      { value: 'top-right' as VideoPosition, label: 'Top Right', icon: '◥', desc: 'Float TR' },
+                      { value: 'bottom-left' as VideoPosition, label: 'Btm Left', icon: '◣', desc: 'Float BL' },
+                      { value: 'bottom-right' as VideoPosition, label: 'Btm Right', icon: '◢', desc: 'Float BR' },
+                    ]).map((opt) => {
+                      const active = visuals.videoPosition === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          onClick={() => update({ videoPosition: opt.value })}
+                          className={`p-2.5 rounded-lg text-center transition-all ${
+                            active
+                              ? 'bg-cyan-600/20 border border-cyan-500/50 ring-1 ring-cyan-500/30'
+                              : 'bg-gray-700/40 border border-transparent hover:bg-gray-700'
+                          }`}
+                        >
+                          <div className="text-lg mb-0.5">{opt.icon}</div>
+                          <div className={`text-[10px] font-semibold ${active ? 'text-cyan-300' : 'text-white'}`}>{opt.label}</div>
+                          <div className="text-[9px] text-gray-400 mt-0.5">{opt.desc}</div>
                         </button>
                       );
                     })}
