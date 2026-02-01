@@ -11,6 +11,9 @@ interface SudokuBoardProps {
   onToggleNote: (row: number, col: number, value: number) => void;
   notes: Record<string, number[]>;
   isCompleted: boolean;
+  highlightSameNumber?: boolean;
+  boardSize?: 'compact' | 'normal' | 'large';
+  numberPadStyle?: 'row' | 'grid';
 }
 
 export default function SudokuBoard({
@@ -22,10 +25,26 @@ export default function SudokuBoard({
   onToggleNote,
   notes,
   isCompleted,
+  highlightSameNumber = true,
+  boardSize = 'normal',
+  numberPadStyle = 'row',
 }: SudokuBoardProps) {
   const [selectedCell, setSelectedCell] = useState<{ row: number; col: number } | null>(null);
   const [highlightNum, setHighlightNum] = useState<number | null>(null);
   const [notesMode, setNotesMode] = useState(false);
+
+  // Cell size classes based on boardSize
+  const cellSizeClass = boardSize === 'compact'
+    ? 'w-8 h-8 text-base sm:w-10 sm:h-10 sm:text-lg'
+    : boardSize === 'large'
+    ? 'w-12 h-12 text-xl sm:w-14 sm:h-14 sm:text-2xl'
+    : 'w-10 h-10 text-lg sm:w-12 sm:h-12 sm:text-xl';
+
+  const noteFontClass = boardSize === 'compact'
+    ? 'text-[6px] sm:text-[7px]'
+    : boardSize === 'large'
+    ? 'text-[9px] sm:text-[10px]'
+    : 'text-[8px] sm:text-[9px]';
 
   const isGiven = useCallback(
     (row: number, col: number) => initialBoard[row]?.[col] !== 0,
@@ -79,11 +98,24 @@ export default function SudokuBoard({
     }
     setSelectedCell({ row, col });
     const val = currentBoard[row]?.[col];
-    setHighlightNum(val && val !== 0 ? val : null);
+    // Also check if single note
+    const cellNotes = notes[`${row},${col}`] || [];
+    if (val && val !== 0) {
+      setHighlightNum(val);
+    } else if (cellNotes.length === 1) {
+      setHighlightNum(cellNotes[0]);
+    } else {
+      setHighlightNum(null);
+    }
   };
 
   const handleNumberInput = useCallback(
     (num: number) => {
+      // Always highlight when highlightSameNumber is on
+      if (highlightSameNumber) {
+        setHighlightNum(num);
+      }
+
       if (!selectedCell || isCompleted) return;
       const { row, col } = selectedCell;
       if (isGiven(row, col)) return;
@@ -95,7 +127,7 @@ export default function SudokuBoard({
         setHighlightNum(num);
       }
     },
-    [selectedCell, isCompleted, isGiven, notesMode, onToggleNote, onPlaceNumber]
+    [selectedCell, isCompleted, isGiven, notesMode, onToggleNote, onPlaceNumber, highlightSameNumber]
   );
 
   const handleErase = useCallback(() => {
@@ -162,9 +194,15 @@ export default function SudokuBoard({
             const selected = selectedCell?.row === row && selectedCell?.col === col;
             const sameGroup = isInSameGroup(row, col);
             const error = !given && hasError(row, col);
-            const sameNum = highlightNum && value === highlightNum && value !== 0;
             const cellNotesArr = notes[`${row},${col}`] || [];
             const cellNotesSet = new Set(cellNotesArr);
+            const singleNote = cellNotesArr.length === 1 ? cellNotesArr[0] : null;
+
+            // Effective display value (real value or single note shown big)
+            const displayValue = value !== 0 ? value : singleNote;
+
+            // Highlight same number (from cell click or numpad click)
+            const sameNum = highlightSameNumber && highlightNum && displayValue === highlightNum && displayValue !== null;
 
             const borderRight = col % 3 === 2 && col !== 8 ? 'border-r-2 border-r-gray-400' : 'border-r border-r-gray-700';
             const borderBottom = row % 3 === 2 && row !== 8 ? 'border-b-2 border-b-gray-400' : 'border-b border-b-gray-700';
@@ -181,6 +219,8 @@ export default function SudokuBoard({
               textClass = 'text-red-400 font-medium';
             } else if (value !== 0) {
               textClass = 'font-medium';
+            } else if (singleNote) {
+              textClass = 'font-medium';
             }
 
             return (
@@ -188,27 +228,32 @@ export default function SudokuBoard({
                 key={`${row}-${col}`}
                 onClick={() => handleCellClick(row, col)}
                 className={`
-                  w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center relative
-                  text-lg sm:text-xl transition-colors duration-100
+                  ${cellSizeClass} flex items-center justify-center relative
+                  transition-colors duration-100
                   ${borderRight} ${borderBottom} ${bgClass} ${textClass}
                   hover:bg-blue-800/40 focus:outline-none
                 `}
                 style={
                   !given && value !== 0 && !error
                     ? { color: myColor }
+                    : singleNote
+                    ? { color: myColor, opacity: 0.7 }
                     : undefined
                 }
               >
                 {value !== 0 ? (
                   value
-                ) : cellNotesArr.length > 0 ? (
+                ) : singleNote ? (
+                  /* Single note → show big like a placed number */
+                  singleNote
+                ) : cellNotesArr.length > 1 ? (
                   <div className="grid grid-cols-3 grid-rows-3 w-full h-full p-px">
                     {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
                       <span
                         key={n}
-                        className={`flex items-center justify-center text-[8px] sm:text-[9px] leading-none ${
+                        className={`flex items-center justify-center ${noteFontClass} leading-none ${
                           cellNotesSet.has(n)
-                            ? highlightNum === n
+                            ? highlightSameNumber && highlightNum === n
                               ? 'text-blue-300 font-bold'
                               : 'text-gray-400'
                             : 'text-transparent'
@@ -243,18 +288,25 @@ export default function SudokuBoard({
         </button>
 
         {/* Number Pad */}
-        <div className="flex flex-wrap justify-center gap-2">
+        <div className={
+          numberPadStyle === 'grid'
+            ? 'grid grid-cols-3 gap-2 max-w-[180px] mx-auto'
+            : 'flex flex-wrap justify-center gap-2'
+        }>
           {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => {
             const remaining = 9 - numberCounts[num];
+            const isHighlighted = highlightSameNumber && highlightNum === num;
             return (
               <button
                 key={num}
                 onClick={() => handleNumberInput(num)}
-                disabled={isCompleted || (!notesMode && remaining <= 0)}
+                disabled={isCompleted || (!notesMode && !highlightSameNumber && remaining <= 0)}
                 className={`
-                  w-12 h-14 sm:w-14 sm:h-16 rounded-lg text-xl font-bold
+                  ${numberPadStyle === 'grid' ? 'w-full h-14' : 'w-12 h-14 sm:w-14 sm:h-16'} rounded-lg text-xl font-bold
                   transition-all flex flex-col items-center justify-center
-                  ${!notesMode && remaining <= 0
+                  ${isHighlighted
+                    ? 'bg-blue-600 text-white ring-2 ring-blue-400'
+                    : !notesMode && remaining <= 0
                     ? 'bg-gray-700 text-gray-600 cursor-not-allowed'
                     : notesMode
                     ? 'bg-gray-700 text-amber-400 hover:bg-amber-900/50 active:bg-amber-900 border border-amber-700/50'
@@ -269,7 +321,7 @@ export default function SudokuBoard({
           <button
             onClick={handleErase}
             disabled={isCompleted}
-            className="w-12 h-14 sm:w-14 sm:h-16 rounded-lg text-sm font-medium bg-gray-700 text-red-400 hover:bg-red-900/50 active:bg-red-900 transition-all"
+            className={`${numberPadStyle === 'grid' ? 'w-full h-14 col-span-3' : 'w-12 h-14 sm:w-14 sm:h-16'} rounded-lg text-sm font-medium bg-gray-700 text-red-400 hover:bg-red-900/50 active:bg-red-900 transition-all`}
           >
             Erase
           </button>

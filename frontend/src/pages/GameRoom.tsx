@@ -6,6 +6,7 @@ import SudokuBoard from '../components/SudokuBoard';
 import PlayerList from '../components/PlayerList';
 import VideoChat from '../components/VideoChat';
 import GameTimer from '../components/GameTimer';
+import SudokuSettings, { getSavedSudokuVisuals, getSudokuBackgroundClass, type SudokuVisuals } from '../components/SudokuSettings';
 import type { HubConnection } from '@microsoft/signalr';
 
 interface Member {
@@ -63,6 +64,7 @@ export default function GameRoom() {
   const [error, setError] = useState('');
   const [winner, setWinner] = useState<string | null>(null);
   const [timerExpired, setTimerExpired] = useState(false);
+  const [visuals, setVisuals] = useState<SudokuVisuals>(getSavedSudokuVisuals);
   const connRef = useRef<HubConnection | null>(null);
 
   const isCompetitive = room?.mode === 'Competitive';
@@ -339,34 +341,36 @@ export default function GameRoom() {
   const myBoardCompleted = isCompetitive && (myProgress?.isCompleted || timerExpired);
 
   return (
-    <div className="min-h-screen bg-gray-900">
+    <div className={`min-h-screen transition-colors duration-500 ${getSudokuBackgroundClass(visuals.background)}`}>
       {/* Header */}
-      <header className="border-b border-gray-800 px-4 py-3">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
+      <header className="border-b border-gray-800/50 px-2 sm:px-4 py-2 sm:py-3">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2">
           <button
             onClick={() => navigate('/games/sudoku')}
-            className="text-gray-400 hover:text-white transition-colors text-sm"
+            className="text-gray-400 hover:text-white transition-colors text-xs sm:text-sm flex-shrink-0"
           >
-            &larr; Back
+            ← Back
           </button>
-          <h1 className="text-white font-bold text-lg">
+          <h1 className="text-white font-bold text-sm sm:text-lg truncate">
             <span className="text-blue-400">Sudoku</span> Together
             {isCompetitive && (
-              <span className="ml-2 text-xs font-medium px-2 py-0.5 rounded bg-orange-900/30 text-orange-400">
+              <span className="ml-1 sm:ml-2 text-[10px] sm:text-xs font-medium px-1.5 py-0.5 rounded bg-orange-900/30 text-orange-400">
                 ⚔️ Race
               </span>
             )}
           </h1>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-3 flex-shrink-0">
+            <SudokuSettings visuals={visuals} onChange={setVisuals} />
             <VideoChat
               connection={connRef.current}
               roomCode={code || ''}
               myName={myName}
               myColor={myColor}
+              videoPosition={visuals.videoPosition}
             />
-            <span className="text-gray-500 text-sm flex items-center gap-2">
+            <span className="text-gray-500 text-xs sm:text-sm items-center gap-1.5 hidden sm:flex">
               <span
-                className="w-2.5 h-2.5 rounded-full inline-block"
+                className="w-2 h-2 rounded-full inline-block"
                 style={{ backgroundColor: myColor }}
               />
               {myName}
@@ -415,6 +419,9 @@ export default function GameRoom() {
               onToggleNote={handleToggleNote}
               notes={room.notes || {}}
               isCompleted={isCompetitive ? (myBoardCompleted ?? false) : isCompleted}
+              highlightSameNumber={visuals.highlightSameNumber}
+              boardSize={visuals.boardSize}
+              numberPadStyle={visuals.numberPadStyle}
             />
           </div>
 
