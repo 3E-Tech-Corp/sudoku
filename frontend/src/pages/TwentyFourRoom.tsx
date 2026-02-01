@@ -282,6 +282,40 @@ function EquationRow({
   );
 }
 
+// ===== Hand Stopwatch Component =====
+
+function HandStopwatch({ running, resetKey }: { running: boolean; resetKey: number }) {
+  const [elapsed, setElapsed] = useState(0);
+  const startRef = useRef<number>(Date.now());
+  const frameRef = useRef<ReturnType<typeof setInterval>>();
+
+  useEffect(() => {
+    startRef.current = Date.now();
+    setElapsed(0);
+  }, [resetKey]);
+
+  useEffect(() => {
+    if (running) {
+      const tick = () => setElapsed(Math.floor((Date.now() - startRef.current) / 1000));
+      frameRef.current = setInterval(tick, 1000);
+      return () => { if (frameRef.current) clearInterval(frameRef.current); };
+    } else {
+      if (frameRef.current) clearInterval(frameRef.current);
+    }
+  }, [running, resetKey]);
+
+  const m = Math.floor(elapsed / 60);
+  const s = elapsed % 60;
+  return (
+    <div className="flex items-center gap-2 text-gray-300">
+      <span className="text-lg">⏱</span>
+      <span className="font-mono text-xl sm:text-2xl font-bold tabular-nums">
+        {m}:{s.toString().padStart(2, '0')}
+      </span>
+    </div>
+  );
+}
+
 // ===== Main Component =====
 
 export default function TwentyFourRoom() {
@@ -316,6 +350,8 @@ export default function TwentyFourRoom() {
   const [faceDown, setFaceDown] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [timerExpired, setTimerExpired] = useState(false);
+  const [handClockRunning, setHandClockRunning] = useState(false);
+  const [handClockKey, setHandClockKey] = useState(0);
 
   // Reset game state for new hand
   const resetForNewHand = useCallback((newCards: TwentyFourCard[]) => {
@@ -328,9 +364,15 @@ export default function TwentyFourRoom() {
     setShowWin(null);
     setFaceDown(true);
     setDealing(true);
+    setHandClockRunning(false);
 
     setTimeout(() => { setDealing(false); }, 300);
-    setTimeout(() => { setFaceDown(false); sounds.flip(); }, 800);
+    setTimeout(() => {
+      setFaceDown(false);
+      sounds.flip();
+      setHandClockKey((k) => k + 1);
+      setHandClockRunning(true);
+    }, 800);
   }, []);
 
   const joinAndLoad = useCallback(
@@ -353,7 +395,12 @@ export default function TwentyFourRoom() {
           setFaceDown(true);
           setDealing(true);
           setTimeout(() => setDealing(false), 300);
-          setTimeout(() => { setFaceDown(false); sounds.flip(); }, 800);
+          setTimeout(() => {
+            setFaceDown(false);
+            sounds.flip();
+            setHandClockKey((k) => k + 1);
+            setHandClockRunning(true);
+          }, 800);
         }
 
         const conn = await startGameConnection();
@@ -374,6 +421,7 @@ export default function TwentyFourRoom() {
 
         conn.on('24GameWon', (winnerName: string, _stepsJson: string, scoresJson: string) => {
           setShowWin(winnerName);
+          setHandClockRunning(false);
           const newScores = JSON.parse(scoresJson);
           setScores(newScores);
           sounds.win();
@@ -731,11 +779,14 @@ export default function TwentyFourRoom() {
         <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 items-start justify-center">
           {/* Main game area */}
           <div className="flex-1 max-w-lg mx-auto w-full">
-            {/* Hand info */}
-            <div className="text-center mb-4">
-              <span className="text-gray-500 text-sm">Hand #{handNumber}</span>
-              <span className="text-gray-600 mx-2">•</span>
-              <span className="text-gray-500 text-sm">Room: <span className="font-mono text-blue-400">{room.code}</span></span>
+            {/* Hand info + stopwatch */}
+            <div className="flex items-center justify-between mb-4">
+              <div className="text-gray-500 text-sm">
+                <span>Hand #{handNumber}</span>
+                <span className="text-gray-600 mx-1.5">•</span>
+                <span className="font-mono text-blue-400">{room.code}</span>
+              </div>
+              <HandStopwatch running={handClockRunning} resetKey={handClockKey} />
             </div>
 
             {/* ── NEW LAYOUT ── */}
@@ -882,28 +933,50 @@ export default function TwentyFourRoom() {
 
               {Object.keys(scores).length > 0 && (
                 <div className="mb-4">
-                  <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-2">Scores</h3>
-                  <div className="space-y-1">
+                  <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-2">
+                    🏆 Leaderboard
+                  </h3>
+                  <div className="space-y-1 max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600">
                     {Object.entries(scores)
                       .sort(([, a], [, b]) => b - a)
-                      .map(([name, score], idx) => (
-                        <div key={name} className="flex items-center justify-between p-2 rounded-lg bg-gray-700/50">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm">{idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '  '}</span>
-                            <span className="text-white text-sm font-medium">
-                              {name}{name === myName && <span className="text-gray-400 text-xs ml-1">(you)</span>}
-                            </span>
+                      .map(([name, score], idx) => {
+                        const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : null;
+                        const isMe = name === myName;
+                        return (
+                          <div
+                            key={name}
+                            className={`flex items-center justify-between p-2 rounded-lg transition-all ${
+                              isMe ? 'bg-blue-900/30 border border-blue-700/40' : 'bg-gray-700/50'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="text-sm w-6 text-center flex-shrink-0">
+                                {medal || <span className="text-gray-500 text-xs">{idx + 1}</span>}
+                              </span>
+                              <span className={`text-sm font-medium truncate ${isMe ? 'text-blue-300' : 'text-white'}`}>
+                                {name}
+                                {isMe && <span className="text-gray-400 text-xs ml-1">(you)</span>}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              <span className="text-amber-400 font-bold text-lg">{score}</span>
+                              <span className="text-gray-500 text-xs">pts</span>
+                            </div>
                           </div>
-                          <span className="text-amber-400 font-bold">{score}</span>
-                        </div>
-                      ))}
+                        );
+                      })}
                   </div>
+                  {handNumber > 1 && (
+                    <div className="mt-2 text-center text-gray-500 text-xs">
+                      {handNumber - 1} hands played
+                    </div>
+                  )}
                 </div>
               )}
 
               <div>
                 <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-2">Players ({room.members.length})</h3>
-                <div className="space-y-1">
+                <div className="space-y-1 max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600">
                   {room.members.map((member) => (
                     <div key={member.displayName} className="flex items-center gap-2 p-2 rounded-lg bg-gray-700/50">
                       <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: member.color }} />
