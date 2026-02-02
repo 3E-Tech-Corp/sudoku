@@ -5,6 +5,7 @@ namespace Sudoku.Api.Services;
 /// <summary>
 /// AI player logic for Guandan (掼蛋), adapted from the demo GuandanEngine.
 /// Works with the existing GuandanCard model (int Rank, string Suit).
+/// Supports wild cards (heart of current level rank).
 ///
 /// Strategy:
 /// - When leading: play weakest non-bomb group to conserve strength
@@ -146,67 +147,136 @@ public static class GuandanAiService
 
     private static void FindBeatingPairs(List<GuandanCard> hand, List<GuandanCard> currentPlay, int levelRank, List<List<GuandanCard>> results)
     {
-        var currentRank = currentPlay.Max(c => GuandanService.GetEffectiveRank(c, levelRank));
-        var byRank = hand.Where(c => c.Rank < 16)
-            .GroupBy(c => GuandanService.GetEffectiveRank(c, levelRank));
+        var currentRank = currentPlay.Where(c => !GuandanService.IsWild(c, levelRank))
+            .Select(c => GuandanService.GetEffectiveRank(c, levelRank))
+            .DefaultIfEmpty(15)
+            .Max();
 
+        var wilds = hand.Where(c => GuandanService.IsWild(c, levelRank)).ToList();
+        var nonWilds = hand.Where(c => !GuandanService.IsWild(c, levelRank) && c.Rank < 16).ToList();
+
+        // Standard pairs (no wilds)
+        var byRank = nonWilds.GroupBy(c => GuandanService.GetEffectiveRank(c, levelRank));
         foreach (var g in byRank)
         {
             if (g.Count() >= 2 && g.Key > currentRank)
-            {
                 results.Add(g.Take(2).ToList());
+        }
+
+        // Wild-enhanced pairs: single non-wild + 1 wild
+        if (wilds.Count > 0)
+        {
+            var seenRanks = new HashSet<int>();
+            foreach (var g in nonWilds.GroupBy(c => GuandanService.GetEffectiveRank(c, levelRank)).OrderBy(g => g.Key))
+            {
+                if (g.Key > currentRank && seenRanks.Add(g.Key))
+                {
+                    results.Add([g.First(), wilds[0]]);
+                }
             }
+
+            // Two wilds as a pair (rank 15)
+            if (wilds.Count >= 2 && 15 > currentRank)
+                results.Add(wilds.Take(2).ToList());
         }
     }
 
     private static void FindBeatingTriples(List<GuandanCard> hand, List<GuandanCard> currentPlay, int levelRank, List<List<GuandanCard>> results)
     {
-        var currentRank = currentPlay.Max(c => GuandanService.GetEffectiveRank(c, levelRank));
-        var byRank = hand.Where(c => c.Rank < 16)
-            .GroupBy(c => GuandanService.GetEffectiveRank(c, levelRank));
+        var currentRank = currentPlay.Where(c => !GuandanService.IsWild(c, levelRank))
+            .Select(c => GuandanService.GetEffectiveRank(c, levelRank))
+            .DefaultIfEmpty(15)
+            .Max();
 
+        var wilds = hand.Where(c => GuandanService.IsWild(c, levelRank)).ToList();
+        var nonWilds = hand.Where(c => !GuandanService.IsWild(c, levelRank) && c.Rank < 16).ToList();
+
+        var byRank = nonWilds.GroupBy(c => GuandanService.GetEffectiveRank(c, levelRank));
         foreach (var g in byRank)
         {
             if (g.Count() >= 3 && g.Key > currentRank)
-            {
                 results.Add(g.Take(3).ToList());
-            }
+
+            // Pair + 1 wild = triple
+            if (g.Count() >= 2 && g.Count() < 3 && wilds.Count >= 1 && g.Key > currentRank)
+                results.Add(g.Take(2).Concat(wilds.Take(1)).ToList());
+
+            // Single + 2 wilds = triple
+            if (g.Count() >= 1 && g.Count() < 2 && wilds.Count >= 2 && g.Key > currentRank)
+                results.Add(g.Take(1).Concat(wilds.Take(2)).ToList());
         }
     }
 
     private static void FindBeatingFullHouses(List<GuandanCard> hand, List<GuandanCard> currentPlay, int levelRank, List<List<GuandanCard>> results)
     {
-        // FullHouse = 三带二 (trips + pair), compared by triple rank
         var currentTripleRank = GetTripleRank(currentPlay, levelRank);
 
-        var byRank = hand.Where(c => c.Rank < 16)
+        var wilds = hand.Where(c => GuandanService.IsWild(c, levelRank)).ToList();
+        var nonWilds = hand.Where(c => !GuandanService.IsWild(c, levelRank) && c.Rank < 16).ToList();
+
+        var byRank = nonWilds
             .GroupBy(c => GuandanService.GetEffectiveRank(c, levelRank))
             .ToDictionary(g => g.Key, g => g.ToList());
 
-        var tripRanks = byRank.Where(kv => kv.Value.Count >= 3 && kv.Key > currentTripleRank)
-            .Select(kv => kv.Key)
-            .OrderBy(r => r)
-            .ToList();
-
-        foreach (var tr in tripRanks)
+        // Find triples (including wild-enhanced) with rank > currentTripleRank
+        var tripCandidates = new List<(int rank, List<GuandanCard> cards, int wildsUsed)>();
+        foreach (var (rank, cards) in byRank)
         {
-            // Find any pair (different rank preferred, same rank if 5+ cards)
+            if (rank <= currentTripleRank) continue;
+            if (cards.Count >= 3)
+                tripCandidates.Add((rank, cards.Take(3).ToList(), 0));
+            if (cards.Count >= 2 && wilds.Count >= 1)
+                tripCandidates.Add((rank, cards.Take(2).Concat(wilds.Take(1)).ToList(), 1));
+            if (cards.Count >= 1 && wilds.Count >= 2)
+                tripCandidates.Add((rank, cards.Take(1).Concat(wilds.Take(2)).ToList(), 2));
+        }
+
+        foreach (var (tripRank, tripCards, wildsUsed) in tripCandidates.OrderBy(t => t.rank))
+        {
+            int remainingWilds = wilds.Count - wildsUsed;
+
+            // Find a pair from remaining cards
             var pairRank = byRank
-                .Where(kv => kv.Value.Count >= 2 && (kv.Key != tr || kv.Value.Count >= 5))
+                .Where(kv => kv.Value.Count >= 2 && (kv.Key != tripRank || kv.Value.Count >= 5))
                 .Select(kv => kv.Key)
                 .OrderBy(r => r)
+                .Cast<int?>()
                 .FirstOrDefault();
 
-            if (pairRank == 0 && !byRank.ContainsKey(0)) continue;
-
-            var trip = byRank[tr].Take(3).ToList();
-            var pairSource = byRank[pairRank];
-            var skip = tr == pairRank ? 3 : 0;
-            var pair = pairSource.Skip(skip).Take(2).ToList();
-
-            if (trip.Count == 3 && pair.Count == 2)
+            if (pairRank != null)
             {
-                results.Add(trip.Concat(pair).ToList());
+                var skip = tripRank == pairRank ? 3 : 0;
+                var pair = byRank[pairRank.Value].Skip(skip).Take(2).ToList();
+                if (pair.Count == 2)
+                {
+                    results.Add(tripCards.Concat(pair).ToList());
+                    continue;
+                }
+            }
+
+            // Try wild-enhanced pair: single + remaining wild
+            if (remainingWilds >= 1)
+            {
+                var singleForPair = byRank
+                    .Where(kv => kv.Key != tripRank && kv.Value.Count >= 1)
+                    .Select(kv => kv.Key)
+                    .OrderBy(r => r)
+                    .Cast<int?>()
+                    .FirstOrDefault();
+
+                if (singleForPair != null)
+                {
+                    var wildForPair = wilds.Skip(wildsUsed).Take(1).ToList();
+                    results.Add(tripCards.Concat([byRank[singleForPair.Value][0]]).Concat(wildForPair).ToList());
+                    continue;
+                }
+            }
+
+            // Try 2 remaining wilds as pair
+            if (remainingWilds >= 2)
+            {
+                var wildPair = wilds.Skip(wildsUsed).Take(2).ToList();
+                results.Add(tripCards.Concat(wildPair).ToList());
             }
         }
     }
@@ -214,34 +284,41 @@ public static class GuandanAiService
     private static void FindBeatingStraights(List<GuandanCard> hand, List<GuandanCard> currentPlay, int levelRank, List<List<GuandanCard>> results)
     {
         var currentHighRank = currentPlay.Max(c => GuandanService.GetEffectiveRank(c, levelRank));
-        var candidates = hand.Where(c => c.Rank < 16).ToList();
+        var wilds = hand.Where(c => GuandanService.IsWild(c, levelRank)).ToList();
+        var candidates = hand.Where(c => !GuandanService.IsWild(c, levelRank) && c.Rank < 16).ToList();
         var byRank = candidates
             .GroupBy(c => GuandanService.GetEffectiveRank(c, levelRank))
             .ToDictionary(g => g.Key, g => g.ToList());
 
-        // Find all 5-card consecutive runs that have a higher max rank
         var ranks = byRank.Keys.OrderBy(r => r).ToList();
-        for (int i = 0; i <= ranks.Count - 5; i++)
+
+        // Try all 5-card consecutive windows
+        for (int start = 2; start + 4 <= 15; start++)
         {
-            // Check if 5 consecutive
-            if (ranks[i + 4] - ranks[i] == 4)
+            int end = start + 4;
+            if (end <= currentHighRank) continue;
+
+            int gaps = 0;
+            var cards = new List<GuandanCard>();
+
+            for (int r = start; r <= end; r++)
             {
-                bool consecutive = true;
-                for (int j = 1; j < 5; j++)
-                {
-                    if (ranks[i + j] != ranks[i] + j) { consecutive = false; break; }
-                }
-                if (!consecutive) continue;
+                if (byRank.ContainsKey(r))
+                    cards.Add(byRank[r][0]);
+                else
+                    gaps++;
+            }
 
-                var highRank = ranks[i + 4];
-                if (highRank <= currentHighRank) continue;
+            if (gaps > wilds.Count) continue;
+            if (gaps > 0)
+                cards.AddRange(wilds.Take(gaps));
 
-                var cards = new List<GuandanCard>();
-                for (int j = 0; j < 5; j++)
-                {
-                    cards.Add(byRank[ranks[i + j]][0]);
-                }
-                results.Add(cards);
+            if (cards.Count == 5)
+            {
+                // Validate
+                var type = GuandanService.ClassifyCombination(cards, levelRank);
+                if (type == "Straight" && GuandanService.CanBeat(cards, type, currentPlay, "Straight", levelRank))
+                    results.Add(cards);
             }
         }
     }
@@ -250,26 +327,35 @@ public static class GuandanAiService
     {
         // Tube = 3 consecutive pairs (6 cards)
         var currentHighRank = currentPlay.Max(c => GuandanService.GetEffectiveRank(c, levelRank));
-        var candidates = hand.Where(c => c.Rank < 16).ToList();
+        var wilds = hand.Where(c => GuandanService.IsWild(c, levelRank)).ToList();
+        var candidates = hand.Where(c => !GuandanService.IsWild(c, levelRank) && c.Rank < 16).ToList();
         var byRank = candidates
             .GroupBy(c => GuandanService.GetEffectiveRank(c, levelRank))
-            .Where(g => g.Count() >= 2)
             .ToDictionary(g => g.Key, g => g.ToList());
 
-        var ranks = byRank.Keys.OrderBy(r => r).ToList();
-        for (int i = 0; i <= ranks.Count - 3; i++)
+        for (int start = 2; start + 2 <= 15; start++)
         {
-            if (ranks[i + 2] - ranks[i] == 2 && ranks[i + 1] == ranks[i] + 1)
-            {
-                var highRank = ranks[i + 2];
-                if (highRank <= currentHighRank) continue;
+            int end = start + 2;
+            if (end <= currentHighRank) continue;
 
-                var cards = new List<GuandanCard>();
-                for (int j = 0; j < 3; j++)
-                {
-                    cards.AddRange(byRank[ranks[i + j]].Take(2));
-                }
-                results.Add(cards);
+            int wildsNeeded = 0;
+            var cards = new List<GuandanCard>();
+
+            for (int r = start; r <= end; r++)
+            {
+                int have = byRank.ContainsKey(r) ? Math.Min(byRank[r].Count, 2) : 0;
+                if (have > 0) cards.AddRange(byRank[r].Take(have));
+                wildsNeeded += (2 - have);
+            }
+
+            if (wildsNeeded > wilds.Count) continue;
+            if (wildsNeeded > 0) cards.AddRange(wilds.Take(wildsNeeded));
+
+            if (cards.Count == 6)
+            {
+                var type = GuandanService.ClassifyCombination(cards, levelRank);
+                if (type == "Tube" && GuandanService.CanBeat(cards, type, currentPlay, "Tube", levelRank))
+                    results.Add(cards);
             }
         }
     }
@@ -278,26 +364,35 @@ public static class GuandanAiService
     {
         // Plate = 2 consecutive triples (6 cards)
         var currentHighRank = currentPlay.Max(c => GuandanService.GetEffectiveRank(c, levelRank));
-        var candidates = hand.Where(c => c.Rank < 16).ToList();
+        var wilds = hand.Where(c => GuandanService.IsWild(c, levelRank)).ToList();
+        var candidates = hand.Where(c => !GuandanService.IsWild(c, levelRank) && c.Rank < 16).ToList();
         var byRank = candidates
             .GroupBy(c => GuandanService.GetEffectiveRank(c, levelRank))
-            .Where(g => g.Count() >= 3)
             .ToDictionary(g => g.Key, g => g.ToList());
 
-        var ranks = byRank.Keys.OrderBy(r => r).ToList();
-        for (int i = 0; i <= ranks.Count - 2; i++)
+        for (int start = 2; start + 1 <= 15; start++)
         {
-            if (ranks[i + 1] == ranks[i] + 1)
-            {
-                var highRank = ranks[i + 1];
-                if (highRank <= currentHighRank) continue;
+            int end = start + 1;
+            if (end <= currentHighRank) continue;
 
-                var cards = new List<GuandanCard>();
-                for (int j = 0; j < 2; j++)
-                {
-                    cards.AddRange(byRank[ranks[i + j]].Take(3));
-                }
-                results.Add(cards);
+            int wildsNeeded = 0;
+            var cards = new List<GuandanCard>();
+
+            for (int r = start; r <= end; r++)
+            {
+                int have = byRank.ContainsKey(r) ? Math.Min(byRank[r].Count, 3) : 0;
+                if (have > 0) cards.AddRange(byRank[r].Take(have));
+                wildsNeeded += (3 - have);
+            }
+
+            if (wildsNeeded > wilds.Count) continue;
+            if (wildsNeeded > 0) cards.AddRange(wilds.Take(wildsNeeded));
+
+            if (cards.Count == 6)
+            {
+                var type = GuandanService.ClassifyCombination(cards, levelRank);
+                if (type == "Plate" && GuandanService.CanBeat(cards, type, currentPlay, "Plate", levelRank))
+                    results.Add(cards);
             }
         }
     }
@@ -310,48 +405,78 @@ public static class GuandanAiService
         int levelRank)
     {
         var bombs = new List<(string type, List<GuandanCard> cards)>();
+        var wilds = hand.Where(c => GuandanService.IsWild(c, levelRank)).ToList();
+        var nonWilds = hand.Where(c => !GuandanService.IsWild(c, levelRank)).ToList();
 
-        // Check for 4+ of a kind bombs
-        var byRank = hand.Where(c => c.Rank < 16)
+        // Check for 4+ of a kind bombs (including wild-enhanced)
+        var byRank = nonWilds.Where(c => c.Rank < 16)
             .GroupBy(c => GuandanService.GetEffectiveRank(c, levelRank));
 
         foreach (var g in byRank)
         {
-            if (g.Count() >= 4)
+            var groupCards = g.ToList();
+
+            // Pure bomb (no wilds)
+            if (groupCards.Count >= 4)
             {
-                var cards = g.ToList();
-                var type = $"Bomb{cards.Count}";
-                if (GuandanService.CanBeat(cards, type, currentPlay, currentPlayType, levelRank))
-                    bombs.Add((type, cards));
+                var type = $"Bomb{groupCards.Count}";
+                if (GuandanService.CanBeat(groupCards, type, currentPlay, currentPlayType, levelRank))
+                    bombs.Add((type, groupCards));
+            }
+
+            // Wild-enhanced bombs: 3 + wild(s)
+            if (groupCards.Count >= 3 && wilds.Count >= 1)
+            {
+                var bombCards = groupCards.Take(3).Concat(wilds.Take(1)).ToList();
+                var type = "Bomb4";
+                if (GuandanService.CanBeat(bombCards, type, currentPlay, currentPlayType, levelRank))
+                    bombs.Add((type, bombCards));
+
+                // 3 + 2 wilds = Bomb5
+                if (wilds.Count >= 2)
+                {
+                    var bomb5Cards = groupCards.Take(3).Concat(wilds.Take(2)).ToList();
+                    if (GuandanService.CanBeat(bomb5Cards, "Bomb5", currentPlay, currentPlayType, levelRank))
+                        bombs.Add(("Bomb5", bomb5Cards));
+                }
+            }
+
+            // 2 + 2 wilds = Bomb4
+            if (groupCards.Count >= 2 && groupCards.Count < 3 && wilds.Count >= 2)
+            {
+                var bombCards = groupCards.Take(2).Concat(wilds.Take(2)).ToList();
+                if (GuandanService.CanBeat(bombCards, "Bomb4", currentPlay, currentPlayType, levelRank))
+                    bombs.Add(("Bomb4", bombCards));
             }
         }
 
-        // Check for straight flushes (5 same suit consecutive)
+        // Check for straight flushes (5 same suit consecutive, including wild-enhanced)
         foreach (var suit in new[] { "Hearts", "Diamonds", "Clubs", "Spades" })
         {
-            var suited = hand.Where(c => c.Suit == suit && c.Rank < 16).ToList();
-            if (suited.Count < 5) continue;
-
+            var suited = nonWilds.Where(c => c.Suit == suit && c.Rank < 16).ToList();
             var suitByRank = suited
                 .GroupBy(c => GuandanService.GetEffectiveRank(c, levelRank))
                 .ToDictionary(g => g.Key, g => g.First());
 
-            var suitRanks = suitByRank.Keys.OrderBy(r => r).ToList();
-            for (int i = 0; i <= suitRanks.Count - 5; i++)
+            for (int start = 2; start + 4 <= 15; start++)
             {
-                if (suitRanks[i + 4] - suitRanks[i] == 4)
+                int end = start + 4;
+                int gaps = 0;
+                var cards = new List<GuandanCard>();
+
+                for (int r = start; r <= end; r++)
                 {
-                    bool consecutive = true;
-                    for (int j = 1; j < 5; j++)
-                    {
-                        if (suitRanks[i + j] != suitRanks[i] + j) { consecutive = false; break; }
-                    }
-                    if (!consecutive) continue;
+                    if (suitByRank.ContainsKey(r))
+                        cards.Add(suitByRank[r]);
+                    else
+                        gaps++;
+                }
 
-                    var cards = new List<GuandanCard>();
-                    for (int j = 0; j < 5; j++)
-                        cards.Add(suitByRank[suitRanks[i + j]]);
+                if (gaps > wilds.Count) continue;
+                if (gaps > 0) cards.AddRange(wilds.Take(gaps));
 
+                if (cards.Count == 5)
+                {
                     if (GuandanService.CanBeat(cards, "StraightFlush", currentPlay, currentPlayType, levelRank))
                         bombs.Add(("StraightFlush", cards));
                 }
@@ -377,11 +502,13 @@ public static class GuandanAiService
 
     // ==================== Hand Grouping (for leading) ====================
 
-    /// <summary>Group a hand into playable combinations using a greedy heuristic.</summary>
+    /// <summary>Group a hand into playable combinations using a greedy heuristic.
+    /// Wilds are kept separate and used to enhance combos strategically.</summary>
     private static List<(string type, List<GuandanCard> cards)> GroupHand(List<GuandanCard> hand, int levelRank)
     {
         var groups = new List<(string type, List<GuandanCard> cards)>();
-        var pool = hand.ToList();
+        var wilds = hand.Where(c => GuandanService.IsWild(c, levelRank)).ToList();
+        var pool = hand.Where(c => !GuandanService.IsWild(c, levelRank)).ToList();
 
         // 1. Joker Bomb
         ExtractJokerBomb(pool, groups);
@@ -404,19 +531,53 @@ public static class GuandanAiService
         // 7. FullHouse (三带二)
         ExtractFullHouses(pool, groups, levelRank);
 
-        // 8. Pairs
+        // 8. Try to use wilds to enhance remaining cards
+        UseWildsToEnhance(pool, wilds, groups, levelRank);
+
+        // 9. Pairs
         ExtractPairsFromPool(pool, groups, levelRank);
 
-        // 9. Triples (bare)
+        // 10. Triples (bare)
         ExtractTriplesFromPool(pool, groups, levelRank);
 
-        // 10. Remaining as singles
+        // 11. Remaining non-wilds as singles
         foreach (var card in pool.OrderBy(c => GuandanService.GetEffectiveRank(c, levelRank)))
         {
             groups.Add(("Single", [card]));
         }
 
+        // 12. Remaining wilds as singles (they're strong singles at rank 15)
+        foreach (var w in wilds)
+        {
+            groups.Add(("Single", [w]));
+        }
+
         return groups;
+    }
+
+    /// <summary>Use wilds to upgrade incomplete combos: single→pair, pair→triple, triple→bomb4.</summary>
+    private static void UseWildsToEnhance(List<GuandanCard> pool, List<GuandanCard> wilds, List<(string type, List<GuandanCard> cards)> groups, int levelRank)
+    {
+        if (wilds.Count == 0) return;
+
+        // Try to make bombs from triples + wild
+        var byRank = pool.Where(c => c.Rank < 16)
+            .GroupBy(c => GuandanService.GetEffectiveRank(c, levelRank))
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        // Prefer upgrading triples to bomb4 (most valuable upgrade)
+        foreach (var (rank, cards) in byRank.OrderByDescending(kv => kv.Key))
+        {
+            if (wilds.Count == 0) break;
+            if (cards.Count == 3)
+            {
+                var bomb = cards.Concat(wilds.Take(1)).ToList();
+                groups.Add(("Bomb4", bomb));
+                foreach (var c in cards) pool.Remove(c);
+                wilds.RemoveAt(0);
+                byRank.Remove(rank);
+            }
+        }
     }
 
     private static void ExtractJokerBomb(List<GuandanCard> pool, List<(string type, List<GuandanCard> cards)> groups)
@@ -691,8 +852,11 @@ public static class GuandanAiService
 
     private static int GetTripleRank(List<GuandanCard> cards, int levelRank)
     {
-        var groups = cards.GroupBy(c => GuandanService.GetEffectiveRank(c, levelRank));
-        return groups.Where(g => g.Count() >= 3).Select(g => g.Key).FirstOrDefault();
+        // Wild-aware: find the non-wild triple rank
+        var nonWilds = cards.Where(c => !GuandanService.IsWild(c, levelRank)).ToList();
+        if (nonWilds.Count == 0) return 15;
+        var groups = nonWilds.GroupBy(c => GuandanService.GetEffectiveRank(c, levelRank));
+        return groups.OrderByDescending(g => g.Count()).ThenByDescending(g => g.Key).First().Key;
     }
 
     private static int BombStrength(string type)

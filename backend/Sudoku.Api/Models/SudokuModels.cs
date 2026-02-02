@@ -298,6 +298,7 @@ public class GuandanPlayer
     public bool IsFinished { get; set; }
     public int FinishOrder { get; set; } // 0=not finished, 1=first, 2=second, etc.
     public bool IsBot { get; set; }
+    public List<GuandanCard> LastPlayCards { get; set; } = []; // Last played cards in current trick
 }
 
 /// <summary>Sanitized player view (no hand data for other players).</summary>
@@ -311,6 +312,7 @@ public class GuandanPlayerView
     public int FinishOrder { get; set; }
     public List<GuandanCard>? Hand { get; set; } // null for other players
     public bool IsBot { get; set; }
+    public List<GuandanCard>? LastPlayCards { get; set; } // Last played cards in current trick (visible to all)
 }
 
 public class GuandanGameState

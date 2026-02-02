@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { startGameConnection, stopGameConnection } from '../services/signalr';
 import type { HubConnection } from '@microsoft/signalr';
+import { getThemeById } from '../config/deckThemes';
 
 // ===== Types =====
 
@@ -20,6 +21,7 @@ interface GuandanPlayerView {
   finishOrder: number;
   hand: GuandanCard[] | null;
   isBot: boolean;
+  lastPlayCards: GuandanCard[] | null;
 }
 
 interface GuandanState {
@@ -64,30 +66,18 @@ interface JoinResponse {
 
 // ===== Helpers =====
 
-function rankToString(rank: number): string {
-  if (rank === 17) return '🃏';
-  if (rank === 16) return '🃏';
-  if (rank === 14) return 'A';
-  if (rank === 13) return 'K';
-  if (rank === 12) return 'Q';
-  if (rank === 11) return 'J';
-  return String(rank);
+const theme = getThemeById('classic');
+
+function rankToThemeNumber(rank: number): number {
+  // rank 14 = A → theme number 1
+  if (rank === 14) return 1;
+  // rank 2-13 → theme number 2-13
+  return rank;
 }
 
-function suitToSymbol(suit: string): string {
-  switch (suit) {
-    case 'Hearts': return '♥';
-    case 'Diamonds': return '♦';
-    case 'Clubs': return '♣';
-    case 'Spades': return '♠';
-    case 'Red': return '';
-    case 'Black': return '';
-    default: return '';
-  }
-}
-
-function isRedSuit(suit: string): boolean {
-  return suit === 'Hearts' || suit === 'Diamonds' || suit === 'Red';
+function suitToThemeSuit(suit: string): string {
+  // Suit names match the theme: Hearts, Diamonds, Clubs, Spades
+  return suit;
 }
 
 function levelToString(level: number): string {
@@ -112,7 +102,7 @@ function isWild(card: GuandanCard, levelRank: number): boolean {
   return card.rank === levelRank && card.suit === 'Hearts';
 }
 
-// ===== Card Component =====
+// ===== Card Component (Real SVG Images) =====
 
 function GDCard({ card, selected, onClick, levelRank, small }: {
   card: GuandanCard;
@@ -122,56 +112,82 @@ function GDCard({ card, selected, onClick, levelRank, small }: {
   small?: boolean;
 }) {
   const isJoker = card.rank >= 16;
-  const isRed = isRedSuit(card.suit);
   const wild = isWild(card, levelRank);
-  const isLevel = card.rank === levelRank && card.rank < 16;
 
-  const w = small ? 'w-10 h-14' : 'w-14 h-20 sm:w-12 sm:h-17';
-  const textSize = small ? 'text-xs' : 'text-sm';
+  const w = small ? 40 : 48;
+  const h = small ? 56 : 67;
+
+  if (isJoker) {
+    // Custom joker rendering (no SVG files for jokers)
+    const isRed = card.rank === 17;
+    return (
+      <div
+        onClick={onClick}
+        style={{ width: w, height: h }}
+        className={`
+          rounded-md border-2 flex flex-col items-center justify-center cursor-pointer
+          transition-all duration-150 select-none flex-shrink-0
+          bg-gradient-to-b from-gray-100 to-gray-200
+          ${selected ? '-translate-y-3 border-yellow-400 shadow-lg shadow-yellow-400/30' : 'border-gray-400 hover:border-gray-300'}
+        `}
+      >
+        <span className={`text-lg ${isRed ? '' : ''}`}>{isRed ? '🃏' : '🃏'}</span>
+        <span className={`text-[8px] font-bold ${isRed ? 'text-red-600' : 'text-gray-800'}`}>
+          {isRed ? 'RED' : 'BLK'}
+        </span>
+      </div>
+    );
+  }
+
+  const num = rankToThemeNumber(card.rank);
+  const suit = suitToThemeSuit(card.suit);
+  const imgSrc = theme.cardUrl(num, suit);
 
   return (
     <div
       onClick={onClick}
+      style={{ width: w, height: h }}
       className={`
-        ${w} rounded-lg border-2 flex flex-col items-center justify-between p-0.5 cursor-pointer
-        transition-all duration-150 select-none flex-shrink-0
-        ${selected ? '-translate-y-3 border-yellow-400 shadow-lg shadow-yellow-400/30' : 'border-gray-600 hover:border-gray-400'}
-        ${wild ? 'ring-2 ring-red-400/60 shadow-red-400/20 shadow-md' : ''}
-        ${isLevel ? 'bg-gradient-to-b from-gray-700 to-gray-800' : 'bg-gradient-to-b from-gray-100 to-gray-300'}
-        ${isLevel ? 'text-yellow-300' : ''}
+        rounded-md overflow-hidden cursor-pointer transition-all duration-150 select-none flex-shrink-0 relative
+        ${selected ? '-translate-y-3 ring-2 ring-yellow-400 shadow-lg shadow-yellow-400/30' : 'hover:brightness-110'}
+        ${wild ? 'ring-2 ring-amber-400 shadow-md shadow-amber-400/40' : ''}
       `}
     >
-      {isJoker ? (
-        <div className={`flex flex-col items-center justify-center h-full ${textSize} font-bold ${card.rank === 17 ? 'text-red-500' : 'text-gray-600'}`}>
-          <span className="text-lg">🃏</span>
-          <span className="text-[9px]">{card.rank === 17 ? 'RED' : 'BLK'}</span>
-        </div>
-      ) : (
-        <>
-          <div className={`${textSize} font-bold leading-none ${isLevel ? '' : isRed ? 'text-red-600' : 'text-gray-800'}`}>
-            {rankToString(card.rank)}
-          </div>
-          <div className={`text-lg leading-none ${isLevel ? '' : isRed ? 'text-red-500' : 'text-gray-700'}`}>
-            {suitToSymbol(card.suit)}
-          </div>
-          <div className={`${textSize} font-bold leading-none rotate-180 ${isLevel ? '' : isRed ? 'text-red-600' : 'text-gray-800'}`}>
-            {rankToString(card.rank)}
-          </div>
-        </>
+      <img
+        src={imgSrc}
+        alt={`${card.rank} of ${card.suit}`}
+        className="w-full h-full object-cover"
+        draggable={false}
+      />
+      {wild && (
+        <div className="absolute inset-0 rounded-md ring-2 ring-amber-400/80 pointer-events-none" />
       )}
+    </div>
+  );
+}
+
+// ===== Compact Card Display (for played cards near other players) =====
+
+function MiniCards({ cards, levelRank }: { cards: GuandanCard[]; levelRank: number }) {
+  if (!cards || cards.length === 0) return null;
+  return (
+    <div className="flex -space-x-3 justify-center">
+      {cards.map((card, i) => (
+        <GDCard key={cardKey(card, i)} card={card} levelRank={levelRank} small />
+      ))}
     </div>
   );
 }
 
 // ===== Card Back Component =====
 function CardBack({ count, small }: { count: number; small?: boolean }) {
-  const w = small ? 'w-8 h-11' : 'w-10 h-14';
+  const w = small ? 'w-7 h-10' : 'w-9 h-12';
   return (
     <div className="flex items-center gap-1">
-      <div className={`${w} rounded-lg bg-gradient-to-br from-red-700 to-red-900 border-2 border-red-600 flex items-center justify-center`}>
-        <span className="text-yellow-300 text-xs font-bold">🥚</span>
+      <div className={`${w} rounded-md bg-gradient-to-br from-red-700 to-red-900 border border-red-600 flex items-center justify-center`}>
+        <span className="text-yellow-300 text-[10px] font-bold">🥚</span>
       </div>
-      <span className="text-gray-400 text-sm font-mono">×{count}</span>
+      <span className="text-gray-400 text-xs font-mono">×{count}</span>
     </div>
   );
 }
@@ -189,7 +205,7 @@ export default function GuandanRoom() {
   const [selectedCards, setSelectedCards] = useState<number[]>([]);
   const [error, setError] = useState('');
   const [actionError, setActionError] = useState('');
-  const [aiThinking, setAiThinking] = useState<string | null>(null); // bot name currently thinking
+  const [aiThinking, setAiThinking] = useState<string | null>(null);
   const [joinName, setJoinName] = useState('');
   const [joining, setJoining] = useState(false);
   const [needsJoin, setNeedsJoin] = useState(false);
@@ -330,7 +346,7 @@ export default function GuandanRoom() {
 
     const myIdx = gameState.players.findIndex(p => p.name === displayName);
     if (myIdx < 0) {
-      // Spectator mode: use seat 0 perspective
+      // Spectator mode
       return {
         bottom: gameState.players[0] || null,
         right: gameState.players[1] || null,
@@ -421,41 +437,42 @@ export default function GuandanRoom() {
         .sort((a, b) => cardSortKey(a.card, myLevelRank) - cardSortKey(b.card, myLevelRank))
     : [];
 
-  const _canStartRound = gameState.phase === 'Waiting' || gameState.phase === 'RoundEnd';
-  void _canStartRound; // used in overlay UI
   const canPlay = gameState.phase === 'Playing' && isMyTurn && selectedCards.length > 0;
   const canPass = gameState.phase === 'Playing' && isMyTurn && !isLeading;
 
-  // Player info panel
+  // Player info panel with team level
   const PlayerPanel = ({ player, position }: { player: GuandanPlayerView | null; position: 'top' | 'left' | 'right' | 'bottom' }) => {
     if (!player) return <div />;
     const isCurrent = gameState.players[gameState.currentPlayerIndex]?.name === player.name;
     const isPartner = player.team === myTeam && player.name !== displayName;
     const teamColor = player.team === 'A' ? 'text-blue-400' : 'text-orange-400';
     const teamBg = player.team === 'A' ? 'bg-blue-900/30 border-blue-700/50' : 'bg-orange-900/30 border-orange-700/50';
+    const teamLevel = player.team === 'A' ? gameState.teamALevel : gameState.teamBLevel;
 
     return (
       <div className={`
-        rounded-xl p-2 sm:p-3 border transition-all
+        rounded-xl p-2 border transition-all min-w-[100px]
         ${isCurrent ? 'ring-2 ring-yellow-400 shadow-lg shadow-yellow-400/20' : ''}
         ${player.isFinished ? 'opacity-60' : ''}
         ${teamBg}
       `}>
-        <div className="flex items-center gap-2 mb-1">
-          {player.isBot && <span className="text-xs" title="AI Bot">🤖</span>}
-          <span className="text-white font-semibold text-sm truncate max-w-[80px] sm:max-w-[120px]">{player.name}</span>
-          {isPartner && <span className="text-xs bg-green-800/50 text-green-300 px-1 rounded">Partner</span>}
+        <div className="flex items-center gap-1.5 mb-1">
+          {player.isBot && <span className="text-[10px]" title="AI Bot">🤖</span>}
+          <span className="text-white font-semibold text-xs truncate max-w-[70px]">{player.name}</span>
+          {isPartner && <span className="text-[9px] bg-green-800/50 text-green-300 px-1 rounded">Ally</span>}
         </div>
-        <div className="flex items-center gap-2 text-xs">
-          <span className={`font-medium ${teamColor}`}>Team {player.team}</span>
+        <div className="flex items-center gap-1.5 text-[10px]">
+          <span className={`font-bold ${teamColor}`}>
+            {player.team === 'A' ? '🔵' : '🟠'} Lv.{levelToString(teamLevel)}
+          </span>
           {player.isFinished ? (
-            <span className="text-yellow-400">#{player.finishOrder}</span>
+            <span className="text-yellow-400 font-bold">#{player.finishOrder}</span>
           ) : (
-            <span className="text-gray-400">{player.cardsRemaining} cards</span>
+            <span className="text-gray-400">{player.cardsRemaining}🃏</span>
           )}
         </div>
         {position !== 'bottom' && !player.isFinished && player.cardsRemaining > 0 && (
-          <div className="mt-2">
+          <div className="mt-1.5">
             <CardBack count={player.cardsRemaining} small />
           </div>
         )}
@@ -473,52 +490,51 @@ export default function GuandanRoom() {
   return (
     <div className="min-h-screen bg-gray-900 flex flex-col">
       {/* Header */}
-      <div className="bg-gray-800 border-b border-gray-700 px-4 py-2 flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      <div className="bg-gray-800 border-b border-gray-700 px-3 py-1.5 flex items-center justify-between">
+        <div className="flex items-center gap-2">
           <button
             onClick={() => navigate('/')}
             className="text-gray-500 hover:text-gray-300 transition-colors text-sm"
           >
             ← Back
           </button>
-          <span className="text-xl">🥚</span>
-          <span className="text-white font-bold">Guandan 掼蛋</span>
-          <span className="text-gray-500 font-mono text-sm">#{code}</span>
+          <span className="text-lg">🥚</span>
+          <span className="text-white font-bold text-sm">Guandan 掼蛋</span>
+          <span className="text-gray-500 font-mono text-xs">#{code}</span>
         </div>
-        <div className="flex items-center gap-4 text-sm">
+        <div className="flex items-center gap-3 text-xs">
           <div className="flex items-center gap-2">
-            <span className="text-blue-400 font-medium">Team A: Lv.{levelToString(gameState.teamALevel)}</span>
+            <span className="text-blue-400 font-medium">🔵 A: Lv.{levelToString(gameState.teamALevel)}</span>
             <span className="text-gray-600">|</span>
-            <span className="text-orange-400 font-medium">Team B: Lv.{levelToString(gameState.teamBLevel)}</span>
+            <span className="text-orange-400 font-medium">🟠 B: Lv.{levelToString(gameState.teamBLevel)}</span>
           </div>
           {gameState.roundNumber > 0 && (
-            <span className="text-gray-500">Round {gameState.roundNumber}</span>
+            <span className="text-gray-500">R{gameState.roundNumber}</span>
           )}
-          <span className="text-gray-500">👥 {room.members.length}/4</span>
         </div>
       </div>
 
       {/* Action error */}
       {actionError && (
-        <div className="bg-red-900/80 text-red-200 text-center py-2 text-sm animate-pulse">
+        <div className="bg-red-900/80 text-red-200 text-center py-1.5 text-sm animate-pulse">
           {actionError}
         </div>
       )}
 
-      {/* Game table */}
-      <div className="flex-1 flex flex-col items-center justify-center p-2 sm:p-4 relative min-h-0">
-        {/* Waiting / Pre-game */}
+      {/* Game table — square-ish layout */}
+      <div className="flex-1 flex items-center justify-center p-2 relative min-h-0">
+        {/* Waiting / Pre-game overlay */}
         {(gameState.phase === 'Waiting' || gameState.phase === 'RoundEnd') && (
           <div className="absolute inset-0 flex items-center justify-center z-20 bg-black/50">
-            <div className="bg-gray-800 rounded-2xl p-8 border border-gray-700 text-center max-w-md">
+            <div className="bg-gray-800 rounded-2xl p-6 border border-gray-700 text-center max-w-md">
               {gameState.phase === 'RoundEnd' && (
                 <div className="mb-4">
-                  <h2 className="text-xl font-bold text-white mb-2">Round {gameState.roundNumber} Complete!</h2>
+                  <h2 className="text-lg font-bold text-white mb-2">Round {gameState.roundNumber} Complete!</h2>
                   <div className="space-y-1">
                     {gameState.finishOrder.map((name, i) => (
                       <div key={name} className="flex items-center justify-center gap-2">
                         <FinishBadge order={i + 1} />
-                        <span className="text-gray-300">{name}</span>
+                        <span className="text-gray-300 text-sm">{name}</span>
                       </div>
                     ))}
                   </div>
@@ -531,14 +547,14 @@ export default function GuandanRoom() {
               )}
               {gameState.phase === 'Waiting' && (
                 <div className="mb-4">
-                  <div className="text-5xl mb-3">🥚</div>
-                  <h2 className="text-xl font-bold text-white mb-2">
+                  <div className="text-4xl mb-2">🥚</div>
+                  <h2 className="text-lg font-bold text-white mb-2">
                     {gameState.players.length < 4 ? 'Waiting for Players...' : 'Ready to Play!'}
                   </h2>
                   <p className="text-gray-400 text-sm">
                     {gameState.players.length}/4 players joined
                   </p>
-                  <div className="mt-3 space-y-1">
+                  <div className="mt-2 space-y-1">
                     {gameState.players.map(p => (
                       <div key={p.name} className="text-sm flex items-center justify-center gap-1">
                         <span className={p.team === 'A' ? 'text-blue-400' : 'text-orange-400'}>
@@ -553,7 +569,7 @@ export default function GuandanRoom() {
                   {gameState.players.length < 4 && (
                     <button
                       onClick={fillBots}
-                      className="mt-3 px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-lg transition-colors text-sm"
+                      className="mt-3 px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-lg transition-colors text-sm"
                     >
                       🤖 Fill with AI Bots
                     </button>
@@ -563,7 +579,7 @@ export default function GuandanRoom() {
               {gameState.players.length === 4 && (
                 <button
                   onClick={startRound}
-                  className="px-8 py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl transition-colors text-lg"
+                  className="px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl transition-colors"
                 >
                   {gameState.phase === 'RoundEnd' ? 'Next Round' : 'Start Game'} 🥚
                 </button>
@@ -572,13 +588,13 @@ export default function GuandanRoom() {
           </div>
         )}
 
-        {/* Game Over */}
+        {/* Game Over overlay */}
         {gameState.phase === 'GameOver' && (
           <div className="absolute inset-0 flex items-center justify-center z-20 bg-black/60">
-            <div className="bg-gray-800 rounded-2xl p-8 border border-gray-700 text-center max-w-md">
-              <div className="text-5xl mb-3">🏆</div>
-              <h2 className="text-2xl font-bold text-white mb-2">Game Over!</h2>
-              <div className="text-lg mb-4">
+            <div className="bg-gray-800 rounded-2xl p-6 border border-gray-700 text-center max-w-md">
+              <div className="text-4xl mb-2">🏆</div>
+              <h2 className="text-xl font-bold text-white mb-2">Game Over!</h2>
+              <div className="text-lg mb-3">
                 {gameState.teamALevel >= 14 ? (
                   <span className="text-blue-400 font-bold">Team A Wins!</span>
                 ) : (
@@ -603,153 +619,173 @@ export default function GuandanRoom() {
           </div>
         )}
 
-        {/* Table layout */}
-        <div className="w-full max-w-5xl mx-auto grid grid-rows-[auto_1fr_auto] gap-2 sm:gap-4 h-full min-h-[500px]">
-          {/* Top player (partner) */}
-          <div className="flex justify-center">
-            <PlayerPanel player={positions.top} position="top" />
-          </div>
-
-          {/* Middle row: left player, play area, right player */}
-          <div className="grid grid-cols-[auto_1fr_auto] gap-2 sm:gap-4 items-center min-h-0">
-            {/* Left player */}
-            <div className="flex flex-col items-center">
-              <PlayerPanel player={positions.left} position="left" />
+        {/* Square table layout */}
+        <div className="w-full max-w-3xl mx-auto" style={{ aspectRatio: '4 / 3' }}>
+          <div className="w-full h-full grid grid-rows-[auto_1fr_auto] gap-1">
+            {/* Top row: top player + their played cards */}
+            <div className="flex flex-col items-center gap-1">
+              <PlayerPanel player={positions.top} position="top" />
+              {positions.top?.lastPlayCards && positions.top.lastPlayCards.length > 0 && (
+                <MiniCards cards={positions.top.lastPlayCards} levelRank={myLevelRank} />
+              )}
             </div>
 
-            {/* Center play area */}
-            <div className="flex flex-col items-center justify-center bg-green-900/30 rounded-2xl border border-green-800/30 min-h-[160px] p-4 relative">
-              {/* Current turn indicator */}
-              {gameState.phase === 'Playing' && (
-                <div className="absolute top-2 left-0 right-0 text-center">
-                  {aiThinking ? (
-                    <span className="text-xs font-medium px-3 py-1 rounded-full bg-purple-600/30 text-purple-300 animate-pulse">
-                      🤖 {aiThinking} is thinking...
-                    </span>
-                  ) : (
-                    <span className={`text-xs font-medium px-3 py-1 rounded-full ${isMyTurn ? 'bg-yellow-600/30 text-yellow-300' : 'bg-gray-700/50 text-gray-400'}`}>
-                      {isMyTurn ? "Your turn!" : `${currentPlayerName}'s turn`}
-                    </span>
-                  )}
-                </div>
-              )}
-
-              {/* Cards played */}
-              {gameState.currentPlay.length > 0 ? (
-                <div className="flex flex-col items-center gap-2">
-                  <div className="flex gap-1 flex-wrap justify-center">
-                    {gameState.currentPlay.map((card, i) => (
-                      <GDCard
-                        key={cardKey(card, i)}
-                        card={card}
-                        levelRank={myLevelRank}
-                        small
-                      />
-                    ))}
+            {/* Middle row: left + center + right */}
+            <div className="grid grid-cols-[auto_1fr_auto] gap-1 items-center min-h-0">
+              {/* Left player + their played cards */}
+              <div className="flex items-center gap-1">
+                <PlayerPanel player={positions.left} position="left" />
+                {positions.left?.lastPlayCards && positions.left.lastPlayCards.length > 0 && (
+                  <div className="max-w-[120px]">
+                    <MiniCards cards={positions.left.lastPlayCards} levelRank={myLevelRank} />
                   </div>
-                  <div className="text-xs text-gray-400">
-                    {gameState.currentPlayType}
-                    {gameState.lastPlayerIndex >= 0 && (
-                      <span> by <span className="text-white">{gameState.players[gameState.lastPlayerIndex]?.name}</span></span>
+                )}
+              </div>
+
+              {/* Center play area */}
+              <div className="flex flex-col items-center justify-center bg-green-900/20 rounded-2xl border border-green-800/20 min-h-[140px] p-3 relative">
+                {/* Turn indicator */}
+                {gameState.phase === 'Playing' && (
+                  <div className="absolute top-1.5 left-0 right-0 text-center">
+                    {aiThinking ? (
+                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-purple-600/30 text-purple-300 animate-pulse">
+                        🤖 {aiThinking} thinking...
+                      </span>
+                    ) : (
+                      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${isMyTurn ? 'bg-yellow-600/30 text-yellow-300' : 'bg-gray-700/50 text-gray-400'}`}>
+                        {isMyTurn ? "Your turn!" : `${currentPlayerName}'s turn`}
+                      </span>
                     )}
                   </div>
-                </div>
-              ) : (
-                <div className="text-gray-600 text-sm">
-                  {gameState.phase === 'Playing' ? (isMyTurn ? 'Lead any combination' : 'Waiting...') : ''}
-                </div>
-              )}
+                )}
 
-              {/* Pass indicators */}
-              {gameState.consecutivePasses > 0 && (
-                <div className="absolute bottom-2 text-xs text-gray-500">
-                  {gameState.consecutivePasses} pass{gameState.consecutivePasses > 1 ? 'es' : ''}
-                </div>
-              )}
-            </div>
+                {/* Current play in center */}
+                {gameState.currentPlay.length > 0 ? (
+                  <div className="flex flex-col items-center gap-1.5 mt-3">
+                    <div className="flex -space-x-2 flex-wrap justify-center">
+                      {gameState.currentPlay.map((card, i) => (
+                        <GDCard
+                          key={cardKey(card, i)}
+                          card={card}
+                          levelRank={myLevelRank}
+                          small
+                        />
+                      ))}
+                    </div>
+                    <div className="text-[10px] text-gray-400">
+                      {gameState.currentPlayType}
+                      {gameState.lastPlayerIndex >= 0 && (
+                        <span> · <span className="text-white">{gameState.players[gameState.lastPlayerIndex]?.name}</span></span>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-gray-600 text-xs mt-3">
+                    {gameState.phase === 'Playing' ? (isMyTurn ? 'Lead any combination' : 'Waiting...') : ''}
+                  </div>
+                )}
 
-            {/* Right player */}
-            <div className="flex flex-col items-center">
-              <PlayerPanel player={positions.right} position="right" />
-            </div>
-          </div>
-
-          {/* Bottom: my player area */}
-          <div className="flex flex-col items-center gap-2">
-            {/* Player info */}
-            <div className="flex items-center gap-3">
-              <PlayerPanel player={positions.bottom} position="bottom" />
-              {/* Action buttons */}
-              {gameState.phase === 'Playing' && isMyTurn && (
-                <div className="flex gap-2">
-                  {canPlay && (
-                    <button
-                      onClick={playCards}
-                      className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg transition-colors text-sm"
-                    >
-                      Play ({selectedCards.length})
-                    </button>
-                  )}
-                  {canPass && (
-                    <button
-                      onClick={pass}
-                      className="px-6 py-2 bg-gray-600 hover:bg-gray-500 text-white font-medium rounded-lg transition-colors text-sm"
-                    >
-                      Pass
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* My hand */}
-            {myPlayer?.hand && myPlayer.hand.length > 0 && (
-              <div className="flex gap-0.5 sm:gap-1 flex-wrap justify-center max-w-full overflow-x-auto pb-2 px-2">
-                {sortedHand.map(({ card, origIdx }) => (
-                  <GDCard
-                    key={cardKey(card, origIdx)}
-                    card={card}
-                    selected={selectedCards.includes(origIdx)}
-                    onClick={() => toggleCard(origIdx)}
-                    levelRank={myLevelRank}
-                  />
-                ))}
+                {/* Pass indicators */}
+                {gameState.consecutivePasses > 0 && (
+                  <div className="absolute bottom-1.5 text-[10px] text-gray-500">
+                    {gameState.consecutivePasses} pass{gameState.consecutivePasses > 1 ? 'es' : ''}
+                  </div>
+                )}
               </div>
-            )}
 
-            {/* Deselect all */}
-            {selectedCards.length > 0 && (
-              <button
-                onClick={() => setSelectedCards([])}
-                className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
-              >
-                Clear selection
-              </button>
-            )}
+              {/* Right player + their played cards */}
+              <div className="flex items-center gap-1">
+                {positions.right?.lastPlayCards && positions.right.lastPlayCards.length > 0 && (
+                  <div className="max-w-[120px]">
+                    <MiniCards cards={positions.right.lastPlayCards} levelRank={myLevelRank} />
+                  </div>
+                )}
+                <PlayerPanel player={positions.right} position="right" />
+              </div>
+            </div>
+
+            {/* Bottom: my player area */}
+            <div className="flex flex-col items-center gap-1.5">
+              {/* My played cards (if any) */}
+              {positions.bottom?.lastPlayCards && positions.bottom.lastPlayCards.length > 0 && (
+                <MiniCards cards={positions.bottom.lastPlayCards} levelRank={myLevelRank} />
+              )}
+
+              {/* Player info + action buttons */}
+              <div className="flex items-center gap-3">
+                <PlayerPanel player={positions.bottom} position="bottom" />
+                {/* Action buttons */}
+                {gameState.phase === 'Playing' && isMyTurn && (
+                  <div className="flex gap-2">
+                    {canPlay && (
+                      <button
+                        onClick={playCards}
+                        className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg transition-colors text-sm"
+                      >
+                        Play ({selectedCards.length})
+                      </button>
+                    )}
+                    {canPass && (
+                      <button
+                        onClick={pass}
+                        className="px-5 py-2 bg-gray-600 hover:bg-gray-500 text-white font-medium rounded-lg transition-colors text-sm"
+                      >
+                        Pass
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* My hand */}
+              {myPlayer?.hand && myPlayer.hand.length > 0 && (
+                <div className="flex -space-x-1 sm:space-x-0 flex-wrap justify-center max-w-full overflow-x-auto pb-1 px-1">
+                  {sortedHand.map(({ card, origIdx }) => (
+                    <GDCard
+                      key={cardKey(card, origIdx)}
+                      card={card}
+                      selected={selectedCards.includes(origIdx)}
+                      onClick={() => toggleCard(origIdx)}
+                      levelRank={myLevelRank}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {/* Deselect all */}
+              {selectedCards.length > 0 && (
+                <button
+                  onClick={() => setSelectedCards([])}
+                  className="text-[10px] text-gray-500 hover:text-gray-300 transition-colors"
+                >
+                  Clear selection
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Level progress bar at bottom */}
-      <div className="bg-gray-800 border-t border-gray-700 px-4 py-2">
-        <div className="max-w-5xl mx-auto flex items-center gap-4 text-xs">
+      {/* Level progress bar */}
+      <div className="bg-gray-800 border-t border-gray-700 px-3 py-1.5">
+        <div className="max-w-3xl mx-auto flex items-center gap-3 text-[10px]">
           <div className="flex-1">
-            <div className="flex items-center gap-1 mb-1">
-              <span className="text-blue-400 font-medium">Team A</span>
-              <span className="text-gray-500">Level {levelToString(gameState.teamALevel)}</span>
+            <div className="flex items-center gap-1 mb-0.5">
+              <span className="text-blue-400 font-medium">🔵 Team A</span>
+              <span className="text-gray-500">Lv.{levelToString(gameState.teamALevel)}</span>
             </div>
-            <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
+            <div className="h-1 bg-gray-700 rounded-full overflow-hidden">
               <div
                 className="h-full bg-blue-500 rounded-full transition-all"
                 style={{ width: `${((gameState.teamALevel - 2) / 12) * 100}%` }}
               />
             </div>
           </div>
-          <div className="text-gray-600 font-mono text-[10px]">
+          <div className="text-gray-600 font-mono text-[9px]">
             {['2','3','4','5','6','7','8','9','10','J','Q','K','A'].map(l => (
               <span
                 key={l}
-                className={`inline-block w-4 text-center ${
+                className={`inline-block w-3 text-center ${
                   levelToString(gameState.teamALevel) === l ? 'text-blue-400 font-bold' :
                   levelToString(gameState.teamBLevel) === l ? 'text-orange-400 font-bold' :
                   'text-gray-700'
@@ -760,11 +796,11 @@ export default function GuandanRoom() {
             ))}
           </div>
           <div className="flex-1">
-            <div className="flex items-center justify-end gap-1 mb-1">
-              <span className="text-gray-500">Level {levelToString(gameState.teamBLevel)}</span>
-              <span className="text-orange-400 font-medium">Team B</span>
+            <div className="flex items-center justify-end gap-1 mb-0.5">
+              <span className="text-gray-500">Lv.{levelToString(gameState.teamBLevel)}</span>
+              <span className="text-orange-400 font-medium">Team B 🟠</span>
             </div>
-            <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
+            <div className="h-1 bg-gray-700 rounded-full overflow-hidden">
               <div
                 className="h-full bg-orange-500 rounded-full transition-all ml-auto"
                 style={{ width: `${((gameState.teamBLevel - 2) / 12) * 100}%` }}

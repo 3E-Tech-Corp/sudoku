@@ -237,6 +237,7 @@ public class GuandanService
             players[i].CardsRemaining = 27;
             players[i].IsFinished = false;
             players[i].FinishOrder = 0;
+            players[i].LastPlayCards = [];
         }
 
         state.CurrentPlayJson = "[]";
@@ -257,70 +258,84 @@ public class GuandanService
         return team == "A" ? state.TeamALevel : state.TeamBLevel;
     }
 
-    /// <summary>Classify a set of cards into a combination type. Returns null if invalid.</summary>
+    /// <summary>Classify a set of cards into a combination type. Returns null if invalid.
+    /// Supports wild cards (heart of current level rank) that can substitute for any non-joker card.</summary>
     public static string? ClassifyCombination(List<GuandanCard> cards, int levelRank)
     {
         if (cards == null || cards.Count == 0) return null;
         int count = cards.Count;
 
-        // Sort by effective rank
-        var sorted = cards.OrderBy(c => GetEffectiveRank(c, levelRank)).ToList();
-
-        // Check Joker Bomb: all 4 jokers
+        // Joker Bomb: all 4 jokers
         if (count == 4 && cards.All(c => c.Rank >= 16))
             return "JokerBomb";
+
+        // Separate wild cards from non-wilds
+        var wilds = cards.Where(c => IsWild(c, levelRank)).ToList();
+        var nonWilds = cards.Where(c => !IsWild(c, levelRank)).ToList();
+        int wildCount = wilds.Count;
+
+        // If wilds are mixed with jokers, invalid (wilds can't substitute for jokers)
+        if (wildCount > 0 && nonWilds.Any(c => c.Rank >= 16))
+            return null;
+
+        // All cards are wilds → treat as same-rank group (effective rank 15)
+        if (nonWilds.Count == 0)
+        {
+            return count switch
+            {
+                1 => "Single",
+                2 => "Pair",
+                3 => "Triple",
+                _ => $"Bomb{count}"
+            };
+        }
 
         // Single
         if (count == 1) return "Single";
 
-        // Pair
-        if (count == 2 && SameEffectiveRank(sorted, levelRank))
-            return "Pair";
+        // Group non-wilds by effective rank
+        var groups = GroupByEffectiveRank(nonWilds, levelRank);
 
-        // Triple
-        if (count == 3 && SameEffectiveRank(sorted, levelRank))
-            return "Triple";
-
-        // Bomb: 4+ cards of same rank
-        if (count >= 4 && SameEffectiveRank(sorted, levelRank))
-            return $"Bomb{count}";
-
-        // Full House: 3+2
-        if (count == 5)
+        // Same-rank combinations (Pair, Triple, Bomb)
+        if (groups.Count == 1)
         {
-            var groups = GroupByEffectiveRank(sorted, levelRank);
-            if (groups.Count == 2)
+            // All non-wilds are the same rank, wilds augment
+            if (nonWilds.Count + wildCount == count)
             {
-                var counts = groups.Values.OrderBy(v => v).ToList();
-                if (counts[0] == 2 && counts[1] == 3) return "FullHouse";
+                return count switch
+                {
+                    2 => "Pair",
+                    3 => "Triple",
+                    _ when count >= 4 => $"Bomb{count}",
+                    _ => null
+                };
             }
         }
 
-        // Straight: 5 consecutive cards (using effective rank)
-        if (count == 5 && IsStraight(sorted, levelRank))
+        bool hasJokers = nonWilds.Any(c => c.Rank >= 16);
+
+        // Full House: 5 cards = triple + pair
+        if (count == 5 && !hasJokers && TryFullHouseWithWilds(nonWilds, wildCount, levelRank))
+            return "FullHouse";
+
+        // Straight: 5 consecutive cards
+        if (count == 5 && !hasJokers && TryStraightWithWilds(nonWilds, wildCount, levelRank))
         {
-            // Check Straight Flush: all same suit
-            if (cards.All(c => c.Suit == cards[0].Suit) && cards.All(c => c.Rank < 16))
+            // Check Straight Flush: all non-wild cards same suit (wilds fill in as that suit)
+            if (IsStraightFlushWithWilds(nonWilds))
                 return "StraightFlush";
             return "Straight";
         }
 
         // Tube (连对): 3 consecutive pairs = 6 cards
-        if (count == 6 && IsTube(sorted, levelRank))
+        if (count == 6 && !hasJokers && TryTubeWithWilds(nonWilds, wildCount, levelRank))
             return "Tube";
 
         // Plate (钢板): 2 consecutive triples = 6 cards
-        if (count == 6 && IsPlate(sorted, levelRank))
+        if (count == 6 && !hasJokers && TryPlateWithWilds(nonWilds, wildCount, levelRank))
             return "Plate";
 
         return null;
-    }
-
-    private static bool SameEffectiveRank(List<GuandanCard> cards, int levelRank)
-    {
-        if (cards.Count <= 1) return true;
-        var firstRank = GetEffectiveRank(cards[0], levelRank);
-        return cards.All(c => GetEffectiveRank(c, levelRank) == firstRank);
     }
 
     private static Dictionary<int, int> GroupByEffectiveRank(List<GuandanCard> cards, int levelRank)
@@ -334,49 +349,138 @@ public class GuandanService
         return groups;
     }
 
-    private static bool IsStraight(List<GuandanCard> cards, int levelRank)
+    /// <summary>Check if non-wilds + wilds can form a Full House (3+2).</summary>
+    private static bool TryFullHouseWithWilds(List<GuandanCard> nonWilds, int wildCount, int levelRank)
     {
-        if (cards.Count != 5) return false;
-        // No jokers in straights
-        if (cards.Any(c => c.Rank >= 16)) return false;
+        if (nonWilds.Count + wildCount != 5) return false;
+        if (nonWilds.Any(c => c.Rank >= 16)) return false;
 
-        var ranks = cards.Select(c => GetEffectiveRank(c, levelRank)).OrderBy(r => r).ToList();
-        // Must be 5 distinct consecutive ranks
-        if (ranks.Distinct().Count() != 5) return false;
+        var groups = GroupByEffectiveRank(nonWilds, levelRank);
 
-        // Check consecutive
-        for (int i = 1; i < 5; i++)
+        // Try each rank as the triple
+        foreach (var (tripleRank, tripleHave) in groups)
         {
-            if (ranks[i] != ranks[i - 1] + 1) return false;
+            int tripleNeed = Math.Max(0, 3 - tripleHave);
+            if (tripleNeed > wildCount) continue;
+
+            int usedForTriple = Math.Min(tripleHave, 3);
+            int leftoverWilds = wildCount - tripleNeed;
+
+            // Remaining non-wilds not used in triple
+            var remaining = new Dictionary<int, int>(groups);
+            remaining[tripleRank] -= usedForTriple;
+            if (remaining[tripleRank] <= 0) remaining.Remove(tripleRank);
+
+            int remainingNonWildCount = remaining.Values.Sum();
+            int totalForPair = remainingNonWildCount + leftoverWilds;
+
+            if (totalForPair != 2) continue;
+
+            // Check: remaining non-wilds should form a valid pair
+            if (remainingNonWildCount == 0) return true;  // 2 wilds form the pair
+            if (remainingNonWildCount == 1) return true;  // 1 non-wild + 1 wild
+            if (remainingNonWildCount == 2 && remaining.Count == 1) return true; // 2 same rank
         }
 
-        // No straights that wrap around through level cards (15) in a weird way
-        // A straight can go 2-3-4-5-6 through 10-J-Q-K-A(14) or include level rank(15) naturally
-        return true;
+        return false;
     }
 
-    private static bool IsTube(List<GuandanCard> cards, int levelRank)
+    /// <summary>Check if non-wilds + wilds can form a Straight (5 consecutive ranks).</summary>
+    private static bool TryStraightWithWilds(List<GuandanCard> nonWilds, int wildCount, int levelRank)
     {
-        if (cards.Count != 6) return false;
-        if (cards.Any(c => c.Rank >= 16)) return false;
+        if (nonWilds.Count + wildCount != 5) return false;
+        if (nonWilds.Any(c => c.Rank >= 16)) return false;
 
-        var groups = GroupByEffectiveRank(cards, levelRank);
-        if (groups.Count != 3 || groups.Values.Any(v => v != 2)) return false;
+        if (nonWilds.Count == 0) return wildCount == 5; // all wilds
 
-        var ranks = groups.Keys.OrderBy(r => r).ToList();
-        return ranks[1] == ranks[0] + 1 && ranks[2] == ranks[1] + 1;
+        var ranks = nonWilds.Select(c => GetEffectiveRank(c, levelRank)).ToList();
+        var distinctRanks = ranks.Distinct().OrderBy(r => r).ToList();
+
+        // Non-wilds must have all distinct ranks (no duplicate ranks in a straight)
+        if (distinctRanks.Count != nonWilds.Count) return false;
+
+        int minR = distinctRanks.First();
+        int maxR = distinctRanks.Last();
+
+        // Try all possible windows of 5 consecutive ranks
+        int startMin = Math.Max(2, maxR - 4);
+        int startMax = Math.Min(minR, 11); // start + 4 <= 15
+        if (startMin > startMax) return false;
+
+        for (int start = startMin; start <= startMax; start++)
+        {
+            int end = start + 4;
+            if (minR < start || maxR > end) continue;
+
+            int covered = distinctRanks.Count(r => r >= start && r <= end);
+            int needed = 5 - covered;
+            if (needed == wildCount) return true;
+        }
+
+        return false;
     }
 
-    private static bool IsPlate(List<GuandanCard> cards, int levelRank)
+    /// <summary>Check if all non-wild cards are the same suit (for straight flush with wilds).</summary>
+    private static bool IsStraightFlushWithWilds(List<GuandanCard> nonWilds)
     {
-        if (cards.Count != 6) return false;
-        if (cards.Any(c => c.Rank >= 16)) return false;
+        if (nonWilds.Count == 0) return true; // all wilds
+        var suit = nonWilds[0].Suit;
+        return nonWilds.All(c => c.Suit == suit);
+    }
 
-        var groups = GroupByEffectiveRank(cards, levelRank);
-        if (groups.Count != 2 || groups.Values.Any(v => v != 3)) return false;
+    /// <summary>Check if non-wilds + wilds can form a Tube (3 consecutive pairs).</summary>
+    private static bool TryTubeWithWilds(List<GuandanCard> nonWilds, int wildCount, int levelRank)
+    {
+        if (nonWilds.Count + wildCount != 6) return false;
+        if (nonWilds.Any(c => c.Rank >= 16)) return false;
 
-        var ranks = groups.Keys.OrderBy(r => r).ToList();
-        return ranks[1] == ranks[0] + 1;
+        var groups = GroupByEffectiveRank(nonWilds, levelRank);
+
+        for (int start = 2; start + 2 <= 15; start++)
+        {
+            // All non-wild ranks must be in [start, start+2]
+            if (groups.Keys.Any(r => r < start || r > start + 2)) continue;
+
+            int wildsNeeded = 0;
+            bool valid = true;
+            for (int r = start; r <= start + 2; r++)
+            {
+                int have = groups.GetValueOrDefault(r, 0);
+                if (have > 2) { valid = false; break; }
+                wildsNeeded += (2 - have);
+            }
+
+            if (valid && wildsNeeded == wildCount) return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>Check if non-wilds + wilds can form a Plate (2 consecutive triples).</summary>
+    private static bool TryPlateWithWilds(List<GuandanCard> nonWilds, int wildCount, int levelRank)
+    {
+        if (nonWilds.Count + wildCount != 6) return false;
+        if (nonWilds.Any(c => c.Rank >= 16)) return false;
+
+        var groups = GroupByEffectiveRank(nonWilds, levelRank);
+
+        for (int start = 2; start + 1 <= 15; start++)
+        {
+            if (groups.Keys.Any(r => r < start || r > start + 1)) continue;
+
+            int wildsNeeded = 0;
+            bool valid = true;
+            for (int r = start; r <= start + 1; r++)
+            {
+                int have = groups.GetValueOrDefault(r, 0);
+                if (have > 3) { valid = false; break; }
+                wildsNeeded += (3 - have);
+            }
+
+            if (valid && wildsNeeded == wildCount) return true;
+        }
+
+        return false;
     }
 
     /// <summary>Get the "strength" of a combination for comparison. Higher = stronger.</summary>
@@ -404,7 +508,7 @@ public class GuandanService
         };
     }
 
-    /// <summary>Check if playedCards can beat currentCards.</summary>
+    /// <summary>Check if playedCards can beat currentCards. Wild-card aware.</summary>
     public static bool CanBeat(List<GuandanCard> playedCards, string playedType, List<GuandanCard> currentCards, string currentType, int levelRank)
     {
         if (currentCards.Count == 0) return true; // Leading: can play anything
@@ -419,9 +523,9 @@ public class GuandanService
         if (playedStrength > 0 && currentStrength > 0)
         {
             if (playedStrength != currentStrength) return playedStrength > currentStrength;
-            // Same bomb level — compare by rank
-            var playedRank = GetHighRank(playedCards, levelRank);
-            var currentRank = GetHighRank(currentCards, levelRank);
+            // Same bomb level — compare by rank (wild-aware)
+            var playedRank = GetCombinationRank(playedCards, playedType, levelRank);
+            var currentRank = GetCombinationRank(currentCards, currentType, levelRank);
             return playedRank > currentRank;
         }
 
@@ -429,29 +533,128 @@ public class GuandanService
         if (playedType != currentType) return false;
         if (playedCards.Count != currentCards.Count) return false;
 
-        // Compare by determining rank
-        var pRank = GetHighRank(playedCards, levelRank);
-        var cRank = GetHighRank(currentCards, levelRank);
-
-        if (playedType == "FullHouse")
-        {
-            // Compare by the triple part
-            pRank = GetTripleRank(playedCards, levelRank);
-            cRank = GetTripleRank(currentCards, levelRank);
-        }
-
+        // Compare by wild-aware combination rank
+        var pRank = GetCombinationRank(playedCards, playedType, levelRank);
+        var cRank = GetCombinationRank(currentCards, currentType, levelRank);
         return pRank > cRank;
     }
 
-    private static int GetHighRank(List<GuandanCard> cards, int levelRank)
+    /// <summary>Get the representative rank of a combination, considering wild cards.
+    /// For same-rank combos: the non-wild cards' rank. For sequences: the highest rank in the sequence.</summary>
+    private static int GetCombinationRank(List<GuandanCard> cards, string comboType, int levelRank)
     {
-        return cards.Max(c => GetEffectiveRank(c, levelRank));
+        var nonWilds = cards.Where(c => !IsWild(c, levelRank)).ToList();
+
+        if (nonWilds.Count == 0)
+            return 15; // All wilds = level rank effective
+
+        switch (comboType)
+        {
+            case "FullHouse":
+                return GetTripleRankWithWilds(cards, levelRank);
+            case "Straight":
+            case "StraightFlush":
+                return GetStraightHighRank(nonWilds, cards.Count(c => IsWild(c, levelRank)), levelRank);
+            case "Tube":
+                return GetSequenceHighRank(nonWilds, 2, 3, cards.Count(c => IsWild(c, levelRank)), levelRank);
+            case "Plate":
+                return GetSequenceHighRank(nonWilds, 3, 2, cards.Count(c => IsWild(c, levelRank)), levelRank);
+            default:
+                // Single, Pair, Triple, Bomb: rank is the non-wild cards' effective rank
+                return nonWilds.Max(c => GetEffectiveRank(c, levelRank));
+        }
     }
 
-    private static int GetTripleRank(List<GuandanCard> cards, int levelRank)
+    /// <summary>Get the triple rank from a Full House, considering wilds.</summary>
+    private static int GetTripleRankWithWilds(List<GuandanCard> cards, int levelRank)
     {
-        var groups = GroupByEffectiveRank(cards, levelRank);
-        return groups.Where(g => g.Value == 3).Select(g => g.Key).FirstOrDefault();
+        var nonWilds = cards.Where(c => !IsWild(c, levelRank)).ToList();
+        int wildCount = cards.Count(c => IsWild(c, levelRank));
+
+        if (nonWilds.Count == 0) return 15;
+
+        var groups = GroupByEffectiveRank(nonWilds, levelRank);
+
+        // Find the highest rank that can serve as the triple
+        foreach (var (rank, count) in groups.OrderByDescending(g => g.Key))
+        {
+            int tripleNeed = Math.Max(0, 3 - count);
+            if (tripleNeed > wildCount) continue;
+
+            int usedForTriple = Math.Min(count, 3);
+            int leftoverWilds = wildCount - tripleNeed;
+
+            var remaining = new Dictionary<int, int>(groups);
+            remaining[rank] -= usedForTriple;
+            if (remaining[rank] <= 0) remaining.Remove(rank);
+
+            int remainingCount = remaining.Values.Sum();
+            int totalForPair = remainingCount + leftoverWilds;
+
+            if (totalForPair == 2)
+            {
+                if (remainingCount <= 1 || (remainingCount == 2 && remaining.Count == 1))
+                    return rank;
+            }
+        }
+
+        // Fallback: original logic
+        return groups.OrderByDescending(g => g.Value).ThenByDescending(g => g.Key).First().Key;
+    }
+
+    /// <summary>Get the highest rank of a straight, considering wilds filling gaps.</summary>
+    private static int GetStraightHighRank(List<GuandanCard> nonWilds, int wildCount, int levelRank)
+    {
+        if (nonWilds.Count == 0) return 6; // all wilds, default
+
+        var ranks = nonWilds.Select(c => GetEffectiveRank(c, levelRank)).Distinct().OrderBy(r => r).ToList();
+        int minR = ranks.First();
+        int maxR = ranks.Last();
+
+        // Try from highest possible window down to find the best interpretation
+        int startMax = Math.Min(minR, 11);
+        int startMin = Math.Max(2, maxR - 4);
+
+        for (int start = startMax; start >= startMin; start--)
+        {
+            int end = start + 4;
+            if (end > 15) continue;
+            if (minR < start || maxR > end) continue;
+
+            int covered = ranks.Count(r => r >= start && r <= end);
+            int needed = 5 - covered;
+            if (needed == wildCount) return end;
+        }
+
+        return maxR; // fallback
+    }
+
+    /// <summary>Get the highest rank of a sequence combo (Tube or Plate), considering wilds.</summary>
+    private static int GetSequenceHighRank(List<GuandanCard> nonWilds, int groupSize, int groupCount, int wildCount, int levelRank)
+    {
+        var groups = GroupByEffectiveRank(nonWilds, levelRank);
+
+        // Find the highest valid window
+        for (int start = 14; start >= 2; start--)
+        {
+            int end = start + groupCount - 1;
+            if (end > 15) continue;
+
+            if (groups.Keys.Any(r => r < start || r > end)) continue;
+
+            int needed = 0;
+            bool valid = true;
+            for (int r = start; r <= end; r++)
+            {
+                int have = groups.GetValueOrDefault(r, 0);
+                if (have > groupSize) { valid = false; break; }
+                needed += (groupSize - have);
+            }
+
+            if (valid && needed == wildCount) return end;
+        }
+
+        return nonWilds.Count > 0 ? nonWilds.Max(c => GetEffectiveRank(c, levelRank)) : 15;
     }
 
     /// <summary>Play cards from a player's hand.</summary>
@@ -492,6 +695,9 @@ public class GuandanService
         // Remove cards from hand
         currentPlayer.Hand = handCopy;
         currentPlayer.CardsRemaining = handCopy.Count;
+
+        // Track last played cards for this player
+        currentPlayer.LastPlayCards = new List<GuandanCard>(cardsToPlay);
 
         // Update current play
         state.CurrentPlayJson = JsonSerializer.Serialize(cardsToPlay, _jsonOpts);
@@ -558,7 +764,8 @@ public class GuandanService
 
         if (state.ConsecutivePasses >= passesNeeded)
         {
-            // Trick won. Start new trick.
+            // Trick won. Start new trick — clear all players' last play.
+            foreach (var p in players) p.LastPlayCards = [];
             state.CurrentPlayJson = "[]";
             state.CurrentPlayType = "";
             state.ConsecutivePasses = 0;
@@ -613,11 +820,10 @@ public class GuandanService
     private void AdvanceToNextPlayer(GuandanGameState state, List<GuandanPlayer> players)
     {
         int startIdx = state.CurrentPlayerIndex;
-        // Counterclockwise: seats go 0 -> 3 -> 2 -> 1 -> 0 (or we can simplify to 0->1->2->3->0)
-        // For simplicity, advance numerically and wrap around
+        // Counterclockwise: seats go 0 -> 3 -> 2 -> 1 -> 0
         for (int i = 1; i <= 4; i++)
         {
-            int nextIdx = (startIdx + i) % 4;
+            int nextIdx = (startIdx - i + 4) % 4;
             if (!players[nextIdx].IsFinished)
             {
                 state.CurrentPlayerIndex = nextIdx;
@@ -726,7 +932,8 @@ public class GuandanService
             IsFinished = p.IsFinished,
             FinishOrder = p.FinishOrder,
             Hand = p.Name == playerName ? p.Hand : null, // Only show own hand
-            IsBot = p.IsBot
+            IsBot = p.IsBot,
+            LastPlayCards = p.LastPlayCards.Count > 0 ? p.LastPlayCards : null // Show all players' last play
         }).ToList();
 
         var response = new GuandanStateResponse
@@ -771,7 +978,8 @@ public class GuandanService
             IsFinished = p.IsFinished,
             FinishOrder = p.FinishOrder,
             Hand = null,
-            IsBot = p.IsBot
+            IsBot = p.IsBot,
+            LastPlayCards = p.LastPlayCards.Count > 0 ? p.LastPlayCards : null
         }).ToList();
 
         return new GuandanStateResponse
