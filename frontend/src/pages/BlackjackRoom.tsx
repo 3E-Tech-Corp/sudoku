@@ -1,10 +1,12 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import api from '../services/api';
 import { startGameConnection, stopGameConnection } from '../services/signalr';
 import { sounds } from '../services/sounds';
 import VideoChat from '../components/VideoChat';
 import CollapsibleSidebar from '../components/CollapsibleSidebar';
+import LanguageSwitcher from '../components/LanguageSwitcher';
 import { getThemeById } from '../config/deckThemes';
 import type { HubConnection } from '@microsoft/signalr';
 
@@ -182,17 +184,18 @@ function HandDisplay({ cards, label, value, status, themeId, isDealer, dealerRev
 
 const BET_AMOUNTS = [10, 25, 50, 100, 250, 500];
 
-function ChipSelector({ chips, onBet, disabled }: {
+function ChipSelector({ chips, onBet, disabled, t }: {
   chips: number;
   onBet: (amount: number) => void;
   disabled: boolean;
+  t: (key: string, opts?: Record<string, unknown>) => string;
 }) {
   const [selected, setSelected] = useState(25);
 
   return (
     <div className="flex flex-col items-center gap-3">
       <div className="text-gray-400 text-sm">
-        Your chips: <span className="text-yellow-400 font-bold">${chips.toLocaleString()}</span>
+        {t('blackjack.yourChips')} <span className="text-yellow-400 font-bold">${chips.toLocaleString()}</span>
       </div>
       <div className="flex gap-2 flex-wrap justify-center">
         {BET_AMOUNTS.map((amt) => (
@@ -217,7 +220,7 @@ function ChipSelector({ chips, onBet, disabled }: {
         disabled={disabled || selected > chips}
         className="px-8 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:bg-gray-700 disabled:text-gray-500 text-white font-bold rounded-xl transition-all text-lg"
       >
-        Place Bet — ${selected}
+        {t('blackjack.placeBet', { amount: selected })}
       </button>
     </div>
   );
@@ -228,6 +231,7 @@ function ChipSelector({ chips, onBet, disabled }: {
 export default function BlackjackRoom() {
   const { code } = useParams<{ code: string }>();
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [room, setRoom] = useState<RoomData | null>(null);
   const [myName, setMyName] = useState('');
   const [myColor, setMyColor] = useState('#10B981');
@@ -279,7 +283,7 @@ export default function BlackjackRoom() {
         });
 
         conn.on('RoomClosed', (reason: string) => {
-          alert(reason || 'This room has been closed.');
+          alert(reason || t('gameRoom.roomClosed'));
           navigate('/games/blackjack');
         });
 
@@ -356,9 +360,9 @@ export default function BlackjackRoom() {
 
   const handleCloseRoom = useCallback(async () => {
     if (!connRef.current || !code || !room) return;
-    if (!confirm('Close this room? All players will be disconnected.')) return;
+    if (!confirm(t('common.closeRoomConfirm'))) return;
     connRef.current.invoke('CloseRoom', code, myName).catch(() => {});
-  }, [code, room, myName]);
+  }, [code, room, myName, t]);
 
   // ===== Render =====
 
@@ -368,24 +372,24 @@ export default function BlackjackRoom() {
         <div className="max-w-md w-full">
           <div className="text-center mb-8">
             <div className="text-5xl mb-3">🂡</div>
-            <h1 className="text-3xl font-bold text-white">Join Blackjack Table</h1>
-            <p className="text-gray-400 mt-2">Room: <span className="font-mono text-emerald-400 font-bold">{code}</span></p>
+            <h1 className="text-3xl font-bold text-white">{t('blackjack.joinTable')}</h1>
+            <p className="text-gray-400 mt-2">{t('gameRoom.roomCodeLabel')} <span className="font-mono text-emerald-400 font-bold">{code}</span></p>
           </div>
           <form onSubmit={handleNameSubmit} className="bg-gray-800 rounded-2xl p-8 border border-gray-700 space-y-5">
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">Your Name</label>
+              <label className="block text-sm font-medium text-gray-300 mb-1">{t('common.yourName')}</label>
               <input
                 type="text"
                 value={nameInput}
                 onChange={(e) => setNameInput(e.target.value)}
-                placeholder="Enter your name"
+                placeholder={t('common.enterName')}
                 maxLength={20}
                 autoFocus
                 className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
             <button type="submit" className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg transition-colors">
-              Sit Down
+              {t('blackjack.sitDown')}
             </button>
           </form>
         </div>
@@ -398,7 +402,7 @@ export default function BlackjackRoom() {
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-400">Shuffling the deck...</p>
+          <p className="text-gray-400">{t('blackjack.shuffling')}</p>
         </div>
       </div>
     );
@@ -408,9 +412,9 @@ export default function BlackjackRoom() {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center px-4">
         <div className="text-center">
-          <p className="text-red-400 text-lg mb-4">{error || 'Room not found'}</p>
+          <p className="text-red-400 text-lg mb-4">{error || t('common.roomNotFound')}</p>
           <button onClick={() => navigate('/games/blackjack')} className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg">
-            Back to Lobby
+            {t('common.backToLobby')}
           </button>
         </div>
       </div>
@@ -431,12 +435,13 @@ export default function BlackjackRoom() {
       <header className="border-b border-gray-800/50 px-2 sm:px-4 py-2 sm:py-3">
         <div className="max-w-6xl mx-auto flex items-center justify-between gap-2">
           <button onClick={() => navigate('/games/blackjack')} className="text-gray-400 hover:text-white transition-colors text-xs sm:text-sm flex-shrink-0">
-            ← Back
+            {t('common.back')}
           </button>
           <h1 className="text-white font-bold text-sm sm:text-lg truncate">
-            <span className="text-emerald-400">Blackjack</span> Table
+            <span className="text-emerald-400">{t('blackjack.title')}</span> {t('blackjack.table')}
           </h1>
           <div className="flex items-center gap-1.5 sm:gap-3 flex-shrink-0">
+            <LanguageSwitcher />
             <VideoChat connection={connRef.current} roomCode={code || ''} myName={myName} myColor={myColor} />
             <span className="text-gray-500 text-xs sm:text-sm items-center gap-1.5 hidden sm:flex">
               <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: myColor }} />
@@ -462,7 +467,7 @@ export default function BlackjackRoom() {
                 {dealerCards.length > 0 ? (
                   <HandDisplay
                     cards={dealerCards}
-                    label="Dealer"
+                    label={t('blackjack.dealer')}
                     value={dealerVal}
                     isDealer
                     dealerRevealed={gameState?.dealerRevealed}
@@ -470,7 +475,7 @@ export default function BlackjackRoom() {
                     status={gameState?.dealerRevealed && handValue(dealerCards) > 21 ? 'Bust' : undefined}
                   />
                 ) : (
-                  <div className="text-gray-300/50 text-sm py-8">Waiting for bets...</div>
+                  <div className="text-gray-300/50 text-sm py-8">{t('blackjack.waitingForBets')}</div>
                 )}
               </div>
 
@@ -491,7 +496,7 @@ export default function BlackjackRoom() {
                     >
                       <HandDisplay
                         cards={player.cards}
-                        label={`${player.playerName}${isMe ? ' (you)' : ''}`}
+                        label={`${player.playerName}${isMe ? ' ' + t('common.you') : ''}`}
                         value={player.cards.length > 0 ? handStr(player.cards) : undefined}
                         status={player.status}
                         themeId={themeId}
@@ -514,7 +519,7 @@ export default function BlackjackRoom() {
               {/* No players yet */}
               {(!gameState || gameState.players.length === 0) && (
                 <div className="text-center text-gray-300/50 py-8">
-                  Waiting for players to join...
+                  {t('blackjack.waitingForPlayers')}
                 </div>
               )}
             </div>
@@ -523,15 +528,15 @@ export default function BlackjackRoom() {
             <div className="mt-4 sm:mt-6">
               {/* Betting phase */}
               {phase === 'Betting' && myPlayer && myPlayer.bet === 0 && (
-                <ChipSelector chips={myPlayer.chips} onBet={placeBet} disabled={false} />
+                <ChipSelector chips={myPlayer.chips} onBet={placeBet} disabled={false} t={t} />
               )}
 
               {phase === 'Betting' && myPlayer && myPlayer.bet > 0 && (
                 <div className="text-center py-4">
                   <div className="text-emerald-400 font-medium">
-                    ✓ Bet placed: <span className="text-yellow-400 font-bold">${myPlayer.bet}</span>
+                    {t('blackjack.betPlaced')} <span className="text-yellow-400 font-bold">${myPlayer.bet}</span>
                   </div>
-                  <p className="text-gray-500 text-sm mt-1">Waiting for other players...</p>
+                  <p className="text-gray-500 text-sm mt-1">{t('blackjack.waitingOtherPlayers')}</p>
                 </div>
               )}
 
@@ -542,7 +547,7 @@ export default function BlackjackRoom() {
                     onClick={dealCards}
                     className="px-10 py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xl rounded-2xl transition-all shadow-lg hover:shadow-emerald-500/20 active:scale-95"
                   >
-                    🃏 Deal Cards
+                    {t('blackjack.dealCards')}
                   </button>
                 </div>
               )}
@@ -554,20 +559,20 @@ export default function BlackjackRoom() {
                     onClick={hit}
                     className="px-8 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition-all active:scale-95 text-lg"
                   >
-                    🂠 Hit
+                    {t('blackjack.hit')}
                   </button>
                   <button
                     onClick={stand}
                     className="px-8 py-3 bg-gray-600 hover:bg-gray-500 text-white font-bold rounded-xl transition-all active:scale-95 text-lg"
                   >
-                    ✋ Stand
+                    {t('blackjack.stand')}
                   </button>
                   {myPlayer.cards.length === 2 && myPlayer.chips >= myPlayer.bet && (
                     <button
                       onClick={doubleDown}
                       className="px-8 py-3 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl transition-all active:scale-95 text-lg"
                     >
-                      ⬆️ Double
+                      {t('blackjack.double')}
                     </button>
                   )}
                 </div>
@@ -577,7 +582,7 @@ export default function BlackjackRoom() {
               {phase === 'Playing' && !isMyTurn && (
                 <div className="text-center py-4">
                   <p className="text-gray-400">
-                    Waiting for <span className="text-white font-medium">{gameState?.players[gameState.currentPlayerIndex]?.playerName}</span>...
+                    {t('blackjack.waitingFor', { name: gameState?.players[gameState.currentPlayerIndex]?.playerName })}
                   </p>
                 </div>
               )}
@@ -586,7 +591,7 @@ export default function BlackjackRoom() {
               {phase === 'DealerTurn' && (
                 <div className="text-center py-4">
                   <div className="w-8 h-8 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                  <p className="text-gray-400">Dealer is playing...</p>
+                  <p className="text-gray-400">{t('blackjack.dealerPlaying')}</p>
                 </div>
               )}
 
@@ -609,7 +614,7 @@ export default function BlackjackRoom() {
                       onClick={newRound}
                       className="px-10 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition-all text-lg"
                     >
-                      🔄 New Round
+                      {t('blackjack.newRound')}
                     </button>
                   )}
                 </div>
@@ -619,7 +624,7 @@ export default function BlackjackRoom() {
 
           {/* Sidebar */}
           <div className="w-full lg:w-64 flex-shrink-0 space-y-3">
-            <CollapsibleSidebar title={`Players (${room.members.length})`} badge={room.code}>
+            <CollapsibleSidebar title={t('common.playersCount', { count: room.members.length })} badge={room.code}>
               <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 space-y-4">
                 <div>
                   <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-1">Room Code</h3>

@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import api from '../services/api';
 import { startGameConnection, stopGameConnection } from '../services/signalr';
 import SudokuBoard from '../components/SudokuBoard';
@@ -8,6 +9,7 @@ import VideoChat from '../components/VideoChat';
 import GameTimer from '../components/GameTimer';
 import SudokuSettings, { getSavedSudokuVisuals, getSudokuBackgroundClass, type SudokuVisuals } from '../components/SudokuSettings';
 import CollapsibleSidebar from '../components/CollapsibleSidebar';
+import LanguageSwitcher from '../components/LanguageSwitcher';
 import type { HubConnection } from '@microsoft/signalr';
 
 interface Member {
@@ -56,6 +58,7 @@ interface JoinResponse {
 export default function GameRoom() {
   const { code } = useParams<{ code: string }>();
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [room, setRoom] = useState<RoomData | null>(null);
   const [myName, setMyName] = useState('');
   const [myColor, setMyColor] = useState('#3B82F6');
@@ -175,7 +178,7 @@ export default function GameRoom() {
         });
 
         conn.on('RoomClosed', (reason: string) => {
-          alert(reason || 'This room has been closed.');
+          alert(reason || t('gameRoom.roomClosed'));
           navigate('/games/sudoku');
         });
 
@@ -264,9 +267,9 @@ export default function GameRoom() {
 
   const handleCloseRoom = useCallback(async () => {
     if (!connRef.current || !code || !room) return;
-    if (!confirm('Close this room? All players will be disconnected.')) return;
+    if (!confirm(t('common.closeRoomConfirm'))) return;
     connRef.current.invoke('CloseRoom', code, myName).catch(() => {});
-  }, [code, room, myName]);
+  }, [code, room, myName, t]);
 
   const handleEraseNumber = useCallback(
     (row: number, col: number) => {
@@ -289,19 +292,19 @@ export default function GameRoom() {
       <div className="min-h-screen bg-gray-900 flex items-center justify-center px-4">
         <div className="max-w-md w-full">
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-white">Join Room</h1>
+            <h1 className="text-3xl font-bold text-white">{t('gameRoom.joinRoom')}</h1>
             <p className="text-gray-400 mt-2">
-              Room code: <span className="font-mono text-blue-400 font-bold">{code}</span>
+              {t('gameRoom.roomCodeLabel')} <span className="font-mono text-blue-400 font-bold">{code}</span>
             </p>
           </div>
           <form onSubmit={handleNameSubmit} className="bg-gray-800 rounded-2xl p-8 border border-gray-700 space-y-5">
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">Your Name</label>
+              <label className="block text-sm font-medium text-gray-300 mb-1">{t('common.yourName')}</label>
               <input
                 type="text"
                 value={nameInput}
                 onChange={(e) => setNameInput(e.target.value)}
-                placeholder="Enter your name"
+                placeholder={t('common.enterName')}
                 maxLength={20}
                 autoFocus
                 className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -311,7 +314,7 @@ export default function GameRoom() {
               type="submit"
               className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
             >
-              Join Game
+              {t('common.joinGame')}
             </button>
           </form>
         </div>
@@ -324,7 +327,7 @@ export default function GameRoom() {
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-400">Loading puzzle...</p>
+          <p className="text-gray-400">{t('common.loadingPuzzle')}</p>
         </div>
       </div>
     );
@@ -334,12 +337,12 @@ export default function GameRoom() {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center px-4">
         <div className="text-center">
-          <p className="text-red-400 text-lg mb-4">{error || 'Room not found'}</p>
+          <p className="text-red-400 text-lg mb-4">{error || t('common.roomNotFound')}</p>
           <button
             onClick={() => navigate('/games/sudoku')}
             className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
           >
-            Back to Lobby
+            {t('common.backToLobby')}
           </button>
         </div>
       </div>
@@ -361,17 +364,18 @@ export default function GameRoom() {
             onClick={() => navigate('/games/sudoku')}
             className="text-gray-400 hover:text-white transition-colors text-xs sm:text-sm flex-shrink-0"
           >
-            ← Back
+            {t('common.back')}
           </button>
           <h1 className="text-white font-bold text-sm sm:text-lg truncate">
-            <span className="text-blue-400">Sudoku</span> Together
+            <span className="text-blue-400">{t('sudoku.title')}</span> {t('sudoku.together')}
             {isCompetitive && (
               <span className="ml-1 sm:ml-2 text-[10px] sm:text-xs font-medium px-1.5 py-0.5 rounded bg-orange-900/30 text-orange-400">
-                ⚔️ Race
+                {t('common.race')}
               </span>
             )}
           </h1>
           <div className="flex items-center gap-1.5 sm:gap-3 flex-shrink-0">
+            <LanguageSwitcher />
             <SudokuSettings visuals={visuals} onChange={setVisuals} />
             <VideoChat
               connection={connRef.current}
@@ -396,7 +400,7 @@ export default function GameRoom() {
         <div className="bg-gradient-to-r from-red-900/50 via-red-800/50 to-red-900/50 border-b border-red-700/50 px-4 py-3">
           <div className="max-w-7xl mx-auto text-center">
             <span className="text-2xl">⏰</span>
-            <span className="text-red-300 font-bold text-lg ml-2">Time&apos;s Up!</span>
+            <span className="text-red-300 font-bold text-lg ml-2">{t('sudoku.timesUp')}</span>
             <span className="text-2xl ml-1">⏰</span>
           </div>
         </div>
@@ -408,7 +412,7 @@ export default function GameRoom() {
           <div className="max-w-7xl mx-auto text-center">
             <span className="text-2xl">🏆</span>
             <span className="text-yellow-300 font-bold text-lg ml-2">
-              {winner === myName ? 'You won!' : `${winner} wins!`}
+              {winner === myName ? t('sudoku.youWon') : t('sudoku.wins', { name: winner })}
             </span>
             <span className="text-2xl ml-1">🏆</span>
           </div>
@@ -449,7 +453,7 @@ export default function GameRoom() {
                 onTimerExpired={() => setTimerExpired(true)}
               />
             )}
-            <CollapsibleSidebar title={`Players (${room.members.length})`} badge={room.code}>
+            <CollapsibleSidebar title={t('common.playersCount', { count: room.members.length })} badge={room.code}>
               <PlayerList
                 players={room.members}
                 currentPlayer={myName}
@@ -465,7 +469,7 @@ export default function GameRoom() {
                   onClick={handleCloseRoom}
                   className="w-full mt-3 py-2 bg-red-900/50 hover:bg-red-800 text-red-300 text-sm font-medium rounded-lg transition-colors border border-red-700/50"
                 >
-                  🚪 Close Room
+                  {t('common.closeRoom')}
                 </button>
               )}
             </CollapsibleSidebar>

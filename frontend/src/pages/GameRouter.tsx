@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import api from '../services/api';
 import GameRoom from './GameRoom';
 import TwentyFourRoom from './TwentyFourRoom';
@@ -15,6 +16,7 @@ interface RoomInfo {
 export default function GameRouter() {
   const { code } = useParams<{ code: string }>();
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [gameType, setGameType] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -31,17 +33,17 @@ export default function GameRouter() {
         setLoading(false);
       })
       .catch((err) => {
-        setError(err instanceof Error ? err.message : 'Room not found');
+        setError(err instanceof Error ? err.message : t('common.roomNotFound'));
         setLoading(false);
       });
-  }, [code, navigate]);
+  }, [code, navigate, t]);
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-400">Loading room...</p>
+          <p className="text-gray-400">{t('common.loadingRoom')}</p>
         </div>
       </div>
     );
@@ -56,7 +58,7 @@ export default function GameRouter() {
             onClick={() => navigate('/')}
             className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
           >
-            Back to Games
+            {t('common.backToGames')}
           </button>
         </div>
       </div>

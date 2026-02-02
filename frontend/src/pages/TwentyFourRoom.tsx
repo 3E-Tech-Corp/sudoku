@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import api from '../services/api';
 import { startGameConnection, stopGameConnection } from '../services/signalr';
 import { sounds } from '../services/sounds';
@@ -8,6 +9,7 @@ import GameTimer from '../components/GameTimer';
 import RoomSettings, { getSavedVisuals, saveVisuals, getBackgroundClass, getFeltGradient, type RoomVisuals } from '../components/RoomSettings';
 import { getThemeById } from '../config/deckThemes';
 import CollapsibleSidebar from '../components/CollapsibleSidebar';
+import LanguageSwitcher from '../components/LanguageSwitcher';
 import confetti from 'canvas-confetti';
 import type { HubConnection } from '@microsoft/signalr';
 
@@ -493,6 +495,7 @@ function HandStopwatch({ running, resetKey, style }: { running: boolean; resetKe
 export default function TwentyFourRoom() {
   const { code } = useParams<{ code: string }>();
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [room, setRoom] = useState<RoomData | null>(null);
   const [myName, setMyName] = useState('');
   const [myColor, setMyColor] = useState('#3B82F6');
@@ -506,9 +509,9 @@ export default function TwentyFourRoom() {
   const [visuals, setVisuals] = useState<RoomVisuals>(getSavedVisuals);
   const handleCloseRoom = useCallback(async () => {
     if (!connRef.current || !code || !room) return;
-    if (!confirm('Close this room? All players will be disconnected.')) return;
+    if (!confirm(t('common.closeRoomConfirm'))) return;
     connRef.current.invoke('CloseRoom', code, myName).catch(() => {});
-  }, [code, room, myName]);
+  }, [code, room, myName, t]);
 
   const handleVisualsChange = useCallback((v: RoomVisuals) => {
     setVisuals(v);
@@ -612,7 +615,7 @@ export default function TwentyFourRoom() {
         });
 
         conn.on('RoomClosed', (reason: string) => {
-          alert(reason || 'This room has been closed.');
+          alert(reason || t('gameRoom.roomClosed'));
           navigate('/games/24');
         });
 
@@ -794,7 +797,7 @@ export default function TwentyFourRoom() {
           return;
         }
         if (activeRow === 2 && result !== 24) {
-          setErrorMsg('Final result must equal 24! Row unlocked — try again.');
+          setErrorMsg(t('twentyFour.finalMustBe24'));
           sounds.error();
           newRow.locked = false;
           newRow.result = null;
@@ -815,7 +818,7 @@ export default function TwentyFourRoom() {
         return;
       } else {
         newRow.result = null;
-        setErrorMsg('Result must be a non-negative whole number. Try different numbers or operator.');
+        setErrorMsg(t('twentyFour.mustBeNonNegative'));
         sounds.error();
         setTimeout(() => setErrorMsg(''), 3000);
       }
@@ -824,7 +827,7 @@ export default function TwentyFourRoom() {
     newRows[activeRow] = newRow;
     setRows(newRows);
     sounds.cardPlace();
-  }, [faceDown, rows, activeRow, code, myName, room?.mode]);
+  }, [faceDown, rows, activeRow, code, myName, room?.mode, t]);
 
   // Place an operator into the active row (tap-to-place)
   const placeOperator = useCallback((op: string) => {
@@ -862,7 +865,7 @@ export default function TwentyFourRoom() {
           return;
         }
         if (activeRow === 2 && result !== 24) {
-          setErrorMsg('Final result must equal 24! Row unlocked — try again.');
+          setErrorMsg(t('twentyFour.finalMustBe24'));
           sounds.error();
           newRow.locked = false;
           newRow.result = null;
@@ -883,7 +886,7 @@ export default function TwentyFourRoom() {
         return;
       } else {
         newRow.result = null;
-        setErrorMsg('Result must be a non-negative whole number. Try a different operator.');
+        setErrorMsg(t('twentyFour.mustBeNonNegativeOp'));
         sounds.error();
         setTimeout(() => setErrorMsg(''), 3000);
       }
@@ -892,7 +895,7 @@ export default function TwentyFourRoom() {
     newRows[activeRow] = newRow;
     setRows(newRows);
     sounds.operatorSelect();
-  }, [faceDown, rows, activeRow, code, myName, room?.mode]);
+  }, [faceDown, rows, activeRow, code, myName, room?.mode, t]);
 
   // Undo current row (clear all placements)
   const undoCurrentRow = useCallback(() => {
@@ -958,26 +961,26 @@ export default function TwentyFourRoom() {
       <div className="min-h-screen bg-gray-900 flex items-center justify-center px-4">
         <div className="max-w-md w-full">
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-white">Join Room</h1>
+            <h1 className="text-3xl font-bold text-white">{t('gameRoom.joinRoom')}</h1>
             <p className="text-gray-400 mt-2">
-              Room code: <span className="font-mono text-blue-400 font-bold">{code}</span>
+              {t('gameRoom.roomCodeLabel')} <span className="font-mono text-blue-400 font-bold">{code}</span>
             </p>
           </div>
           <form onSubmit={handleNameSubmit} className="bg-gray-800 rounded-2xl p-8 border border-gray-700 space-y-5">
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">Your Name</label>
+              <label className="block text-sm font-medium text-gray-300 mb-1">{t('common.yourName')}</label>
               <input
                 type="text"
                 value={nameInput}
                 onChange={(e) => setNameInput(e.target.value)}
-                placeholder="Enter your name"
+                placeholder={t('common.enterName')}
                 maxLength={20}
                 autoFocus
                 className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <button type="submit" className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors">
-              Join Game
+              {t('common.joinGame')}
             </button>
           </form>
         </div>
@@ -990,7 +993,7 @@ export default function TwentyFourRoom() {
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-400">Loading game...</p>
+          <p className="text-gray-400">{t('common.loadingGame')}</p>
         </div>
       </div>
     );
@@ -1000,9 +1003,9 @@ export default function TwentyFourRoom() {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center px-4">
         <div className="text-center">
-          <p className="text-red-400 text-lg mb-4">{error || 'Room not found'}</p>
+          <p className="text-red-400 text-lg mb-4">{error || t('common.roomNotFound')}</p>
           <button onClick={() => navigate('/games/24')} className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg">
-            Back to Lobby
+            {t('common.backToLobby')}
           </button>
         </div>
       </div>
@@ -1019,10 +1022,10 @@ export default function TwentyFourRoom() {
       <header className="border-b border-gray-800/50 px-2 sm:px-4 py-2 sm:py-3">
         <div className="max-w-5xl mx-auto flex items-center justify-between gap-2">
           <button onClick={() => navigate('/games/24')} className="text-gray-400 hover:text-white transition-colors text-xs sm:text-sm flex-shrink-0">
-            ← Back
+            {t('common.back')}
           </button>
           <h1 className="text-white font-bold text-sm sm:text-lg truncate">
-            <span className="text-amber-400">24</span> Game
+            <span className="text-amber-400">{t('twentyFour.title')}</span> {t('twentyFour.game')}
             {isCompetitive && (
               <span className="ml-1 sm:ml-2 text-[10px] sm:text-xs font-medium px-1.5 py-0.5 rounded bg-orange-900/30 text-orange-400">⚔️</span>
             )}
@@ -1031,6 +1034,7 @@ export default function TwentyFourRoom() {
             )}
           </h1>
           <div className="flex items-center gap-1.5 sm:gap-3 flex-shrink-0">
+            <LanguageSwitcher />
             <RoomSettings visuals={visuals} onChange={handleVisualsChange} />
             <VideoChat connection={connRef.current} roomCode={code || ''} myName={myName} myColor={myColor} videoPosition={visuals.videoPosition} />
             <span className="text-gray-500 text-xs sm:text-sm items-center gap-1.5 hidden sm:flex">
@@ -1048,7 +1052,7 @@ export default function TwentyFourRoom() {
             <div>
               <span className="text-3xl">🏆</span>
               <span className="text-yellow-300 font-bold text-xl ml-2">
-                {showWin === myName ? 'You made 24!' : `${showWin} made 24!`}
+                {showWin === myName ? t('twentyFour.youMade24') : t('twentyFour.playerMade24', { name: showWin })}
               </span>
               <span className="text-3xl ml-2">🏆</span>
             </div>
@@ -1064,7 +1068,7 @@ export default function TwentyFourRoom() {
         <div className="bg-gradient-to-r from-red-900/50 via-red-800/50 to-red-900/50 border-b border-red-700/50 px-4 py-3">
           <div className="max-w-5xl mx-auto text-center">
             <span className="text-2xl">⏰</span>
-            <span className="text-red-300 font-bold text-lg ml-2">Time&apos;s Up!</span>
+            <span className="text-red-300 font-bold text-lg ml-2">{t('sudoku.timesUp')}</span>
           </div>
         </div>
       )}
@@ -1083,7 +1087,7 @@ export default function TwentyFourRoom() {
             {/* Hand info + stopwatch */}
             <div className="flex items-center justify-between mb-2 sm:mb-4">
               <div className="text-gray-500 text-xs sm:text-sm">
-                <span>Hand #{handNumber}</span>
+                <span>{t('twentyFour.hand', { number: handNumber })}</span>
                 {!isPractice && (
                   <>
                     <span className="text-gray-600 mx-1">•</span>
@@ -1250,7 +1254,7 @@ export default function TwentyFourRoom() {
                 disabled={!rows[activeRow] || (rows[activeRow].card1 === null && rows[activeRow].operator === null)}
                 className="px-3 py-2 sm:px-4 sm:py-3 bg-gray-700 hover:bg-gray-600 disabled:opacity-30 text-gray-200 text-sm sm:text-base font-medium rounded-lg sm:rounded-xl transition-all"
               >
-                ↩ Undo
+                {t('twentyFour.undo')}
               </button>
               <button
                 onClick={() => {
@@ -1260,7 +1264,6 @@ export default function TwentyFourRoom() {
                   setResultCards(new Map());
                   setErrorMsg('');
                   sounds.undo();
-                  // Broadcast full reset in co-op: undo all 3 rows
                   if (connRef.current && code && room?.mode === 'Cooperative') {
                     for (let r = 0; r < 3; r++) {
                       connRef.current.invoke('Undo24', code, myName, r).catch(() => {});
@@ -1269,13 +1272,13 @@ export default function TwentyFourRoom() {
                 }}
                 className="px-3 py-2 sm:px-4 sm:py-3 bg-gray-700 hover:bg-gray-600 text-gray-200 text-sm sm:text-base font-medium rounded-lg sm:rounded-xl transition-all"
               >
-                🔄 Reset
+                {t('twentyFour.reset')}
               </button>
               <button
                 onClick={skipHand}
                 className="px-3 py-2 sm:px-4 sm:py-3 bg-gray-700 hover:bg-red-900/50 text-gray-400 hover:text-red-300 text-sm sm:text-base font-medium rounded-lg sm:rounded-xl transition-all"
               >
-                Skip ⏭
+                {t('twentyFour.skip')}
               </button>
             </div>
           </div>
@@ -1292,19 +1295,19 @@ export default function TwentyFourRoom() {
               />
             )}
             <CollapsibleSidebar
-              title={isPractice ? '🎯 Practice' : `Players (${room.members.length})`}
+              title={isPractice ? t('twentyFour.practice') : t('common.playersCount', { count: room.members.length })}
               badge={!isPractice ? room.code : undefined}
             >
               <div className="bg-gray-800 rounded-xl sm:rounded-2xl border border-gray-700 p-4 sm:p-6">
                 {!isPractice && (
                   <div className="mb-4">
-                    <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-1">Room Code</h3>
+                    <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-1">{t('common.roomCode')}</h3>
                     <div className="font-mono text-2xl font-bold text-white tracking-widest text-center py-1">{room.code}</div>
                     <button
                       onClick={() => navigator.clipboard.writeText(`${window.location.origin}/room/${room.code}`)}
                       className="mt-2 w-full py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
                     >
-                      📋 Copy Invite Link
+                      {t('common.copyInviteLink')}
                     </button>
                   </div>
                 )}
@@ -1312,15 +1315,15 @@ export default function TwentyFourRoom() {
                 {isPractice && (
                   <div className="mb-4 text-center">
                     <div className="text-3xl mb-2">🎯</div>
-                    <h3 className="text-white font-bold text-lg">Practice Mode</h3>
-                    <p className="text-gray-400 text-sm mt-1">Sharpen your skills solo</p>
+                    <h3 className="text-white font-bold text-lg">{t('twentyFour.practiceMode')}</h3>
+                    <p className="text-gray-400 text-sm mt-1">{t('twentyFour.sharpenSkills')}</p>
                   </div>
                 )}
 
                 {Object.keys(scores).length > 0 && (
                   <div className="mb-4">
                     <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-2">
-                      {isPractice ? '📊 Your Score' : '🏆 Leaderboard'}
+                      {isPractice ? t('twentyFour.yourScore') : t('twentyFour.leaderboard')}
                     </h3>
                     <div className="space-y-1 max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600">
                       {Object.entries(scores)
@@ -1341,12 +1344,12 @@ export default function TwentyFourRoom() {
                                 </span>
                                 <span className={`text-sm font-medium truncate ${isMe ? 'text-blue-300' : 'text-white'}`}>
                                   {name}
-                                  {isMe && <span className="text-gray-400 text-xs ml-1">(you)</span>}
+                                  {isMe && <span className="text-gray-400 text-xs ml-1">{t('common.you')}</span>}
                                 </span>
                               </div>
                               <div className="flex items-center gap-1 flex-shrink-0">
                                 <span className="text-amber-400 font-bold text-lg">{score}</span>
-                                <span className="text-gray-500 text-xs">pts</span>
+                                <span className="text-gray-500 text-xs">{t('twentyFour.pts')}</span>
                               </div>
                             </div>
                           );
@@ -1354,7 +1357,7 @@ export default function TwentyFourRoom() {
                     </div>
                     {handNumber > 1 && (
                       <div className="mt-2 text-center text-gray-500 text-xs">
-                        {handNumber - 1} hands played
+                        {t('twentyFour.handsPlayed', { count: handNumber - 1 })}
                       </div>
                     )}
                   </div>
@@ -1362,13 +1365,13 @@ export default function TwentyFourRoom() {
 
                 {!isPractice && (
                   <div>
-                    <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-2">Players ({room.members.length})</h3>
+                    <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-2">{t('common.playersCount', { count: room.members.length })}</h3>
                     <div className="space-y-1 max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600">
                       {room.members.map((member) => (
                         <div key={member.displayName} className="flex items-center gap-2 p-2 rounded-lg bg-gray-700/50">
                           <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: member.color }} />
                           <span className="text-white text-sm truncate">
-                            {member.displayName}{member.displayName === myName && <span className="text-gray-400 text-xs ml-1">(you)</span>}
+                            {member.displayName}{member.displayName === myName && <span className="text-gray-400 text-xs ml-1">{t('common.you')}</span>}
                           </span>
                         </div>
                       ))}
@@ -1377,12 +1380,12 @@ export default function TwentyFourRoom() {
                 )}
 
                 <div className="mt-4 pt-4 border-t border-gray-700">
-                  <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-2">How to Play</h3>
+                  <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-2">{t('common.howToPlay')}</h3>
                   <div className="text-gray-500 text-xs space-y-1">
-                    <p>1. Tap cards &amp; operators — they auto-fill the current row</p>
-                    <p>2. Rows auto-lock when complete</p>
-                    <p>3. Results become new cards for the next row</p>
-                    <p>4. Make <span className="text-amber-400 font-bold">24</span> on the final row to win!</p>
+                    <p>1. {t('twentyFour.howToPlay.step1')}</p>
+                    <p>2. {t('twentyFour.howToPlay.step2')}</p>
+                    <p>3. {t('twentyFour.howToPlay.step3')}</p>
+                    <p>4. {t('twentyFour.howToPlay.step4', { value: '24' })}</p>
                   </div>
                 </div>
                 {room.hostName === myName && (
@@ -1390,7 +1393,7 @@ export default function TwentyFourRoom() {
                     onClick={handleCloseRoom}
                     className="w-full mt-4 py-2 bg-red-900/50 hover:bg-red-800 text-red-300 text-sm font-medium rounded-lg transition-colors border border-red-700/50"
                   >
-                    🚪 Close Room
+                    {t('common.closeRoom')}
                   </button>
                 )}
               </div>

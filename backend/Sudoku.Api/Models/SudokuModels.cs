@@ -297,6 +297,7 @@ public class GuandanPlayer
     public int CardsRemaining { get; set; }
     public bool IsFinished { get; set; }
     public int FinishOrder { get; set; } // 0=not finished, 1=first, 2=second, etc.
+    public bool IsBot { get; set; }
 }
 
 /// <summary>Sanitized player view (no hand data for other players).</summary>
@@ -309,6 +310,7 @@ public class GuandanPlayerView
     public bool IsFinished { get; set; }
     public int FinishOrder { get; set; }
     public List<GuandanCard>? Hand { get; set; } // null for other players
+    public bool IsBot { get; set; }
 }
 
 public class GuandanGameState

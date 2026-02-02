@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import api from '../services/api';
+import LanguageSwitcher from '../components/LanguageSwitcher';
 
 interface CreateRoomResponse {
   code: string;
@@ -20,72 +22,73 @@ interface PublicRoom {
 
 const GAME_CONFIG: Record<string, {
   apiGameType: string;
-  name: string;
+  nameKey: string;
   icon: string;
   accent: string;
   accentBg: string;
   buttonClass: string;
   hasDifficulty: boolean;
   hasMode?: boolean;
-  tagline: string;
+  taglineKey: string;
 }> = {
   sudoku: {
     apiGameType: 'Sudoku',
-    name: 'Sudoku',
+    nameKey: 'landing.games.sudoku.name',
     icon: '🔢',
     accent: 'text-blue-400',
     accentBg: 'bg-blue-600',
     buttonClass: 'bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800',
     hasDifficulty: true,
-    tagline: 'Solve puzzles with friends — cooperate or compete in real-time',
+    taglineKey: 'lobby.taglines.sudoku',
   },
   '24': {
     apiGameType: 'TwentyFour',
-    name: '24 Card Game',
+    nameKey: 'landing.games.24.name',
     icon: '🃏',
     accent: 'text-amber-400',
     accentBg: 'bg-amber-600',
     buttonClass: 'bg-amber-600 hover:bg-amber-700 disabled:bg-amber-800',
     hasDifficulty: false,
-    tagline: 'Combine 4 cards to make 24 — race your friends!',
+    taglineKey: 'lobby.taglines.24',
   },
   blackjack: {
     apiGameType: 'Blackjack',
-    name: 'Blackjack',
+    nameKey: 'landing.games.blackjack.name',
     icon: '🂡',
     accent: 'text-emerald-400',
     accentBg: 'bg-emerald-600',
     buttonClass: 'bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-800',
     hasDifficulty: false,
-    tagline: 'Beat the dealer — get to 21 without going over!',
+    taglineKey: 'lobby.taglines.blackjack',
   },
   chess: {
     apiGameType: 'Chess',
-    name: 'Chess',
+    nameKey: 'landing.games.chess.name',
     icon: '♟️',
     accent: 'text-slate-400',
     accentBg: 'bg-slate-600',
     buttonClass: 'bg-slate-600 hover:bg-slate-700 disabled:bg-slate-800',
     hasDifficulty: false,
     hasMode: false,
-    tagline: 'The ultimate game of strategy — checkmate your opponent!',
+    taglineKey: 'lobby.taglines.chess',
   },
   guandan: {
     apiGameType: 'Guandan',
-    name: 'Guandan 掼蛋',
+    nameKey: 'landing.games.guandan.name',
     icon: '🥚',
     accent: 'text-red-400',
     accentBg: 'bg-red-600',
     buttonClass: 'bg-red-600 hover:bg-red-700 disabled:bg-red-800',
     hasDifficulty: false,
     hasMode: false,
-    tagline: 'China\'s most popular card game — team up and throw some eggs!',
+    taglineKey: 'lobby.taglines.guandan',
   },
 };
 
 export default function GameLobby() {
   const { gameId } = useParams<{ gameId: string }>();
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   const config = gameId ? GAME_CONFIG[gameId] : null;
 
@@ -103,7 +106,6 @@ export default function GameLobby() {
   const [publicRooms, setPublicRooms] = useState<PublicRoom[]>([]);
   const [loadingRooms, setLoadingRooms] = useState(true);
 
-  // Pre-fill names from localStorage
   useEffect(() => {
     const saved = localStorage.getItem('sudoku_name');
     if (saved) {
@@ -125,9 +127,9 @@ export default function GameLobby() {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center px-4">
         <div className="text-center">
-          <p className="text-red-400 text-lg mb-4">Unknown game type</p>
+          <p className="text-red-400 text-lg mb-4">{t('common.unknownGameType')}</p>
           <button onClick={() => navigate('/')} className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg">
-            Back to Games
+            {t('common.backToGames')}
           </button>
         </div>
       </div>
@@ -149,7 +151,7 @@ export default function GameLobby() {
       localStorage.setItem('sudoku_name', savedName);
       navigate(`/room/${resp.code}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start practice');
+      setError(err instanceof Error ? err.message : t('common.failedToStart'));
     } finally {
       setStartingPractice(false);
     }
@@ -158,7 +160,7 @@ export default function GameLobby() {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!hostName.trim()) {
-      setError('Please enter your name');
+      setError(t('common.enterYourName'));
       return;
     }
     setError('');
@@ -175,7 +177,7 @@ export default function GameLobby() {
       localStorage.setItem('sudoku_name', hostName.trim());
       navigate(`/room/${resp.code}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create room');
+      setError(err instanceof Error ? err.message : t('common.failedToCreate'));
     } finally {
       setCreating(false);
     }
@@ -184,7 +186,7 @@ export default function GameLobby() {
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!joinCode.trim() || !joinName.trim()) {
-      setError('Please enter both code and name');
+      setError(t('common.enterBothCodeAndName'));
       return;
     }
     setError('');
@@ -196,7 +198,7 @@ export default function GameLobby() {
       localStorage.setItem('sudoku_name', joinName.trim());
       navigate(`/room/${joinCode.trim().toUpperCase()}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to join room');
+      setError(err instanceof Error ? err.message : t('common.failedToJoin'));
     } finally {
       setJoining(false);
     }
@@ -205,11 +207,17 @@ export default function GameLobby() {
   const timeAgo = (dateStr: string) => {
     const diff = Date.now() - new Date(dateStr).getTime();
     const mins = Math.floor(diff / 60000);
-    if (mins < 1) return 'just now';
-    if (mins < 60) return `${mins}m ago`;
+    if (mins < 1) return t('common.justNow');
+    if (mins < 60) return t('common.mAgo', { count: mins });
     const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}h ago`;
-    return `${Math.floor(hrs / 24)}d ago`;
+    if (hrs < 24) return t('common.hAgo', { count: hrs });
+    return t('common.dAgo', { count: Math.floor(hrs / 24) });
+  };
+
+  const difficultyLabels: Record<string, string> = {
+    Easy: t('lobby.easy'),
+    Medium: t('lobby.medium'),
+    Hard: t('lobby.hard'),
   };
 
   return (
@@ -217,18 +225,21 @@ export default function GameLobby() {
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="mb-10">
-          <button
-            onClick={() => navigate('/')}
-            className="text-gray-500 hover:text-gray-300 transition-colors text-sm mb-6 inline-flex items-center gap-1"
-          >
-            ← All Games
-          </button>
+          <div className="flex items-center justify-between mb-6">
+            <button
+              onClick={() => navigate('/')}
+              className="text-gray-500 hover:text-gray-300 transition-colors text-sm inline-flex items-center gap-1"
+            >
+              {t('common.allGames')}
+            </button>
+            <LanguageSwitcher />
+          </div>
           <div className="text-center">
             <div className="text-5xl mb-3">{config.icon}</div>
             <h1 className="text-4xl font-bold text-white mb-2">
-              <span className={config.accent}>{config.name}</span>
+              <span className={config.accent}>{t(config.nameKey)}</span>
             </h1>
-            <p className="text-gray-400 text-lg">{config.tagline}</p>
+            <p className="text-gray-400 text-lg">{t(config.taglineKey)}</p>
           </div>
         </div>
 
@@ -247,8 +258,23 @@ export default function GameLobby() {
               className="w-full py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:from-emerald-800 disabled:to-teal-800 text-white font-bold text-lg rounded-2xl transition-all shadow-lg hover:shadow-emerald-500/20 flex items-center justify-center gap-3"
             >
               <span className="text-2xl">🎯</span>
-              {startingPractice ? 'Starting...' : 'Practice Solo'}
-              <span className="text-sm font-normal opacity-75 ml-1">— no room needed</span>
+              {startingPractice ? t('common.starting') : t('lobby.practiceSolo')}
+              <span className="text-sm font-normal opacity-75 ml-1">{t('lobby.practiceNoRoom')}</span>
+            </button>
+          </div>
+        )}
+
+        {/* Play vs Bots Button (Guandan) */}
+        {gameId === 'guandan' && (
+          <div className="max-w-3xl mx-auto mb-8">
+            <button
+              onClick={handlePractice}
+              disabled={startingPractice}
+              className="w-full py-4 bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-500 hover:to-fuchsia-500 disabled:from-purple-800 disabled:to-fuchsia-800 text-white font-bold text-lg rounded-2xl transition-all shadow-lg hover:shadow-purple-500/20 flex items-center justify-center gap-3"
+            >
+              <span className="text-2xl">🤖</span>
+              {startingPractice ? t('common.starting') : 'Play vs AI Bots'}
+              <span className="text-sm font-normal opacity-75 ml-1">Practice with 3 AI opponents</span>
             </button>
           </div>
         )}
@@ -256,15 +282,15 @@ export default function GameLobby() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-3xl mx-auto">
           {/* Create Room */}
           <div className="bg-gray-800 rounded-2xl p-8 border border-gray-700">
-            <h2 className="text-2xl font-bold text-white mb-6">Create Room</h2>
+            <h2 className="text-2xl font-bold text-white mb-6">{t('common.createRoom')}</h2>
             <form onSubmit={handleCreate} className="space-y-5">
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Your Name</label>
+                <label className="block text-sm font-medium text-gray-300 mb-1">{t('common.yourName')}</label>
                 <input
                   type="text"
                   value={hostName}
                   onChange={(e) => setHostName(e.target.value)}
-                  placeholder="Enter your name"
+                  placeholder={t('common.enterName')}
                   maxLength={20}
                   className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
@@ -273,9 +299,9 @@ export default function GameLobby() {
               {/* Difficulty (Sudoku only) */}
               {config.hasDifficulty && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Difficulty</label>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">{t('lobby.difficulty')}</label>
                   <div className="grid grid-cols-3 gap-2">
-                    {['Easy', 'Medium', 'Hard'].map((d) => (
+                    {(['Easy', 'Medium', 'Hard'] as const).map((d) => (
                       <button
                         key={d}
                         type="button"
@@ -290,7 +316,7 @@ export default function GameLobby() {
                             : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                         }`}
                       >
-                        {d}
+                        {difficultyLabels[d]}
                       </button>
                     ))}
                   </div>
@@ -299,18 +325,18 @@ export default function GameLobby() {
 
               {config.hasMode !== false && (
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Mode</label>
+                <label className="block text-sm font-medium text-gray-300 mb-1">{t('lobby.mode')}</label>
                 <div className="grid grid-cols-2 gap-2">
                   {[
                     {
                       value: 'Cooperative',
-                      label: '🤝 Co-op',
-                      desc: gameId === '24' ? 'Solve together' : 'Solve together',
+                      label: t('lobby.coopMode'),
+                      desc: gameId === '24' ? t('lobby.solveTogether') : t('lobby.solveTogether'),
                     },
                     {
                       value: 'Competitive',
-                      label: '⚔️ Race',
-                      desc: gameId === '24' ? 'First to 24 wins' : 'First to finish',
+                      label: t('lobby.raceMode'),
+                      desc: gameId === '24' ? t('lobby.firstTo24Wins') : t('lobby.firstToFinish'),
                     },
                   ].map((m) => (
                     <button
@@ -336,10 +362,10 @@ export default function GameLobby() {
               {/* Time Limit (competitive only) */}
               {mode === 'Competitive' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">⏱ Time Limit</label>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">{t('lobby.timeLimit')}</label>
                   <div className="grid grid-cols-5 gap-1.5">
                     {[
-                      { value: null, label: 'None' },
+                      { value: null, label: t('lobby.timeLimitNone') },
                       { value: 300, label: '5m' },
                       { value: 600, label: '10m' },
                       { value: 900, label: '15m' },
@@ -376,7 +402,7 @@ export default function GameLobby() {
                     }`}
                   />
                 </button>
-                <span className="text-sm text-gray-300">Public room</span>
+                <span className="text-sm text-gray-300">{t('lobby.publicRoom')}</span>
               </div>
 
               <button
@@ -384,33 +410,33 @@ export default function GameLobby() {
                 disabled={creating}
                 className={`w-full py-3 text-white font-medium rounded-lg transition-colors ${config.buttonClass}`}
               >
-                {creating ? 'Creating...' : 'Create Game'}
+                {creating ? t('common.creating') : t('common.createGame')}
               </button>
             </form>
           </div>
 
           {/* Join Room */}
           <div className="bg-gray-800 rounded-2xl p-8 border border-gray-700">
-            <h2 className="text-2xl font-bold text-white mb-6">Join Room</h2>
+            <h2 className="text-2xl font-bold text-white mb-6">{t('common.joinRoom')}</h2>
             <form onSubmit={handleJoin} className="space-y-5">
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Your Name</label>
+                <label className="block text-sm font-medium text-gray-300 mb-1">{t('common.yourName')}</label>
                 <input
                   type="text"
                   value={joinName}
                   onChange={(e) => setJoinName(e.target.value)}
-                  placeholder="Enter your name"
+                  placeholder={t('common.enterName')}
                   maxLength={20}
                   className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Room Code</label>
+                <label className="block text-sm font-medium text-gray-300 mb-1">{t('common.roomCode')}</label>
                 <input
                   type="text"
                   value={joinCode}
                   onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-                  placeholder="e.g. ABC123"
+                  placeholder={t('lobby.roomCodePlaceholder')}
                   maxLength={6}
                   className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase tracking-widest text-center text-lg font-mono"
                 />
@@ -420,19 +446,19 @@ export default function GameLobby() {
                 disabled={joining}
                 className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-800 text-white font-medium rounded-lg transition-colors"
               >
-                {joining ? 'Joining...' : 'Join Game'}
+                {joining ? t('common.joining') : t('common.joinGame')}
               </button>
             </form>
 
-            {/* How to play section (fills space in 24 game where there's no difficulty) */}
+            {/* How to play section (24 game) */}
             {gameId === '24' && (
               <div className="mt-8 pt-6 border-t border-gray-700">
-                <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider mb-3">How to Play</h3>
+                <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider mb-3">{t('common.howToPlay')}</h3>
                 <div className="space-y-2 text-gray-500 text-sm">
-                  <p className="flex items-start gap-2"><span className="text-amber-400">1.</span> Four cards are dealt (numbers 1–13)</p>
-                  <p className="flex items-start gap-2"><span className="text-amber-400">2.</span> Combine them using +, −, ×, ÷</p>
-                  <p className="flex items-start gap-2"><span className="text-amber-400">3.</span> Build 3 equations — final result must be <span className="text-amber-400 font-bold">24</span></p>
-                  <p className="flex items-start gap-2"><span className="text-amber-400">4.</span> All intermediate results must be non-negative integers (0 is OK!)</p>
+                  <p className="flex items-start gap-2"><span className="text-amber-400">1.</span> {t('lobby.howToPlay24.step1')}</p>
+                  <p className="flex items-start gap-2"><span className="text-amber-400">2.</span> {t('lobby.howToPlay24.step2')}</p>
+                  <p className="flex items-start gap-2"><span className="text-amber-400">3.</span> {t('lobby.howToPlay24.step3')} <span className="text-amber-400 font-bold">{t('lobby.howToPlay24.step3Value')}</span></p>
+                  <p className="flex items-start gap-2"><span className="text-amber-400">4.</span> {t('lobby.howToPlay24.step4')}</p>
                 </div>
               </div>
             )}
@@ -442,17 +468,17 @@ export default function GameLobby() {
         {/* Public Rooms */}
         <div className="max-w-3xl mx-auto mt-12">
           <h2 className="text-xl font-bold text-white mb-4 text-center">
-            🌐 Public Rooms
+            {t('lobby.publicRooms')}
           </h2>
           {loadingRooms ? (
             <div className="text-center py-8">
               <div className="w-8 h-8 border-3 border-gray-600 border-t-gray-400 rounded-full animate-spin mx-auto mb-3" />
-              <p className="text-gray-500 text-sm">Loading rooms...</p>
+              <p className="text-gray-500 text-sm">{t('common.loadingRooms')}</p>
             </div>
           ) : publicRooms.length === 0 ? (
             <div className="text-center py-8 bg-gray-800/50 rounded-2xl border border-gray-700/50">
-              <p className="text-gray-500">No public rooms right now</p>
-              <p className="text-gray-600 text-sm mt-1">Create one and toggle "Public room" to list it here!</p>
+              <p className="text-gray-500">{t('lobby.noPublicRooms')}</p>
+              <p className="text-gray-600 text-sm mt-1">{t('lobby.publicRoomHint')}</p>
             </div>
           ) : (
             <div className="grid gap-3">
@@ -483,7 +509,7 @@ export default function GameLobby() {
                       <span className="font-mono text-lg font-bold text-blue-400">{room.code}</span>
                       {room.difficulty !== 'N/A' && (
                         <span className={`text-xs font-medium px-2 py-0.5 rounded ${diffColor}`}>
-                          {room.difficulty}
+                          {difficultyLabels[room.difficulty] || room.difficulty}
                         </span>
                       )}
                       <span className={`text-xs font-medium px-2 py-0.5 rounded ${
@@ -491,16 +517,16 @@ export default function GameLobby() {
                           ? 'text-orange-400 bg-orange-900/30'
                           : 'text-blue-400 bg-blue-900/30'
                       }`}>
-                        {room.mode === 'Competitive' ? '⚔️ Race' : '🤝 Co-op'}
+                        {room.mode === 'Competitive' ? t('common.race') : t('common.coop')}
                       </span>
                       <span className="text-gray-400 text-sm">
-                        by {room.hostName || 'Anonymous'}
+                        {t('common.by')} {room.hostName || 'Anonymous'}
                       </span>
                       <span className="text-gray-600 text-xs">{timeAgo(room.createdAt)}</span>
                     </div>
                     <div className="flex items-center gap-2 text-gray-400 flex-shrink-0">
                       <span className="text-sm">👥 {room.playerCount}</span>
-                      <span className="text-blue-400 text-sm font-medium">Join →</span>
+                      <span className="text-blue-400 text-sm font-medium">{t('common.join')}</span>
                     </div>
                   </button>
                 );
@@ -510,7 +536,7 @@ export default function GameLobby() {
         </div>
 
         <p className="text-center text-gray-600 text-sm mt-10">
-          No account needed. Just create or join a room and start playing!
+          {t('lobby.noAccountNeeded')}
         </p>
       </div>
     </div>

@@ -701,6 +701,55 @@ public class GameHub : Hub
 
     // ==================== Guandan methods ====================
 
+    /// <summary>Process AI turns in a loop until it's a human player's turn or the game phase changes.</summary>
+    private async Task ProcessAiTurns(string code, int roomId, Models.GuandanGameState state)
+    {
+        while (state.Phase == "Playing")
+        {
+            var players = JsonSerializer.Deserialize<List<Models.GuandanPlayer>>(state.PlayersJson, _jsonOpts) ?? [];
+            var currentPlayer = players[state.CurrentPlayerIndex];
+            if (!currentPlayer.IsBot || currentPlayer.IsFinished) break;
+
+            // Notify clients that AI is thinking
+            var roomConnections = _connections.Where(kvp => kvp.Value.RoomCode == code).ToList();
+            foreach (var conn in roomConnections)
+            {
+                await Clients.Client(conn.Key).SendAsync("GDAiThinking", currentPlayer.Name);
+            }
+
+            // Thinking delay (shorter when multiple bots play in sequence)
+            await Task.Delay(1200);
+
+            var levelRank = currentPlayer.Team == "A" ? state.TeamALevel : state.TeamBLevel;
+            var currentPlay = JsonSerializer.Deserialize<List<Models.GuandanCard>>(state.CurrentPlayJson, _jsonOpts) ?? [];
+            bool isLeading = currentPlay.Count == 0;
+
+            var aiDecision = GuandanAiService.DecidePlay(
+                currentPlayer.Hand,
+                currentPlay,
+                state.CurrentPlayType,
+                levelRank,
+                isLeading);
+
+            if (aiDecision != null)
+            {
+                var (newState, error) = await _guandanService.PlayCards(roomId, currentPlayer.Name, aiDecision);
+                if (error != null) break;
+                state = newState;
+            }
+            else
+            {
+                // Pass (only if not leading — AI should always play when leading)
+                if (isLeading) break; // Shouldn't happen, but safety check
+                var (newState, error) = await _guandanService.Pass(roomId, currentPlayer.Name);
+                if (error != null) break;
+                state = newState;
+            }
+
+            await BroadcastGuandanState(code, state);
+        }
+    }
+
     private async Task BroadcastGuandanState(string code, Models.GuandanGameState state)
     {
         // Send personalized state to each connected player in the room
@@ -722,6 +771,8 @@ public class GameHub : Hub
         {
             var state = await _guandanService.StartRound(room.Id);
             await BroadcastGuandanState(code, state);
+            // If first player is a bot, process AI turns
+            await ProcessAiTurns(code, room.Id, state);
         }
         catch (InvalidOperationException ex)
         {
@@ -751,6 +802,8 @@ public class GameHub : Hub
                 return;
             }
             await BroadcastGuandanState(code, state);
+            // Process AI turns if next player is a bot
+            await ProcessAiTurns(code, room.Id, state);
         }
         catch (InvalidOperationException ex)
         {
@@ -772,6 +825,25 @@ public class GameHub : Hub
                 await Clients.Caller.SendAsync("GDError", error);
                 return;
             }
+            await BroadcastGuandanState(code, state);
+            // Process AI turns if next player is a bot
+            await ProcessAiTurns(code, room.Id, state);
+        }
+        catch (InvalidOperationException ex)
+        {
+            await Clients.Caller.SendAsync("GDError", ex.Message);
+        }
+    }
+
+    public async Task GuandanFillBots(string code)
+    {
+        code = code.ToUpper();
+        var room = await _roomService.GetRoomByCode(code);
+        if (room == null || room.GameType != "Guandan") return;
+
+        try
+        {
+            var state = await _guandanService.FillWithBots(room.Id);
             await BroadcastGuandanState(code, state);
         }
         catch (InvalidOperationException ex)

@@ -174,6 +174,45 @@ public class GuandanService
         return state;
     }
 
+    private static readonly string[] BotNames = ["Bot Alice", "Bot Bob", "Bot Carol"];
+
+    /// <summary>Fill empty seats with AI bot players.</summary>
+    public async Task<GuandanGameState> FillWithBots(int roomId)
+    {
+        var state = await GetGameState(roomId) ?? throw new InvalidOperationException("No game state");
+        var players = JsonSerializer.Deserialize<List<GuandanPlayer>>(state.PlayersJson, _jsonOpts) ?? [];
+
+        int botIndex = 0;
+        while (players.Count < 4)
+        {
+            var seatIndex = players.Count;
+            var team = (seatIndex % 2 == 0) ? "A" : "B";
+            // Pick a unique bot name
+            string botName;
+            do
+            {
+                botName = botIndex < BotNames.Length ? BotNames[botIndex] : $"Bot {botIndex + 1}";
+                botIndex++;
+            } while (players.Any(p => p.Name == botName));
+
+            players.Add(new GuandanPlayer
+            {
+                Name = botName,
+                Hand = [],
+                Team = team,
+                SeatIndex = seatIndex,
+                CardsRemaining = 0,
+                IsFinished = false,
+                FinishOrder = 0,
+                IsBot = true
+            });
+        }
+
+        state.PlayersJson = JsonSerializer.Serialize(players, _jsonOpts);
+        await SaveState(state);
+        return state;
+    }
+
     /// <summary>Start a new round: shuffle and deal 27 cards each.</summary>
     public async Task<GuandanGameState> StartRound(int roomId)
     {
@@ -686,7 +725,8 @@ public class GuandanService
             CardsRemaining = p.CardsRemaining,
             IsFinished = p.IsFinished,
             FinishOrder = p.FinishOrder,
-            Hand = p.Name == playerName ? p.Hand : null // Only show own hand
+            Hand = p.Name == playerName ? p.Hand : null, // Only show own hand
+            IsBot = p.IsBot
         }).ToList();
 
         var response = new GuandanStateResponse
@@ -730,7 +770,8 @@ public class GuandanService
             CardsRemaining = p.CardsRemaining,
             IsFinished = p.IsFinished,
             FinishOrder = p.FinishOrder,
-            Hand = null
+            Hand = null,
+            IsBot = p.IsBot
         }).ToList();
 
         return new GuandanStateResponse

@@ -19,6 +19,7 @@ interface GuandanPlayerView {
   isFinished: boolean;
   finishOrder: number;
   hand: GuandanCard[] | null;
+  isBot: boolean;
 }
 
 interface GuandanState {
@@ -188,6 +189,7 @@ export default function GuandanRoom() {
   const [selectedCards, setSelectedCards] = useState<number[]>([]);
   const [error, setError] = useState('');
   const [actionError, setActionError] = useState('');
+  const [aiThinking, setAiThinking] = useState<string | null>(null); // bot name currently thinking
   const [joinName, setJoinName] = useState('');
   const [joining, setJoining] = useState(false);
   const [needsJoin, setNeedsJoin] = useState(false);
@@ -235,12 +237,17 @@ export default function GuandanRoom() {
             setGameState(state);
             setSelectedCards([]);
             setActionError('');
+            setAiThinking(null);
           } catch { /* ignore parse errors */ }
         });
 
         conn.on('GDError', (msg: string) => {
           setActionError(msg);
           setTimeout(() => setActionError(''), 3000);
+        });
+
+        conn.on('GDAiThinking', (botName: string) => {
+          setAiThinking(botName);
         });
 
         conn.on('PlayerJoined', () => { loadRoom(); });
@@ -289,6 +296,10 @@ export default function GuandanRoom() {
   };
 
   // Game actions
+  const fillBots = () => {
+    connRef.current?.invoke('GuandanFillBots', code!.toUpperCase()).catch(console.error);
+  };
+
   const startRound = () => {
     connRef.current?.invoke('GuandanStartRound', code!.toUpperCase()).catch(console.error);
   };
@@ -431,6 +442,7 @@ export default function GuandanRoom() {
         ${teamBg}
       `}>
         <div className="flex items-center gap-2 mb-1">
+          {player.isBot && <span className="text-xs" title="AI Bot">🤖</span>}
           <span className="text-white font-semibold text-sm truncate max-w-[80px] sm:max-w-[120px]">{player.name}</span>
           {isPartner && <span className="text-xs bg-green-800/50 text-green-300 px-1 rounded">Partner</span>}
         </div>
@@ -528,15 +540,24 @@ export default function GuandanRoom() {
                   </p>
                   <div className="mt-3 space-y-1">
                     {gameState.players.map(p => (
-                      <div key={p.name} className="text-sm">
+                      <div key={p.name} className="text-sm flex items-center justify-center gap-1">
                         <span className={p.team === 'A' ? 'text-blue-400' : 'text-orange-400'}>
                           Team {p.team}
                         </span>
-                        <span className="text-gray-400 mx-1">—</span>
+                        <span className="text-gray-400">—</span>
+                        {p.isBot && <span title="AI Bot">🤖</span>}
                         <span className="text-white">{p.name}</span>
                       </div>
                     ))}
                   </div>
+                  {gameState.players.length < 4 && (
+                    <button
+                      onClick={fillBots}
+                      className="mt-3 px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-lg transition-colors text-sm"
+                    >
+                      🤖 Fill with AI Bots
+                    </button>
+                  )}
                 </div>
               )}
               {gameState.players.length === 4 && (
@@ -601,9 +622,15 @@ export default function GuandanRoom() {
               {/* Current turn indicator */}
               {gameState.phase === 'Playing' && (
                 <div className="absolute top-2 left-0 right-0 text-center">
-                  <span className={`text-xs font-medium px-3 py-1 rounded-full ${isMyTurn ? 'bg-yellow-600/30 text-yellow-300' : 'bg-gray-700/50 text-gray-400'}`}>
-                    {isMyTurn ? "Your turn!" : `${currentPlayerName}'s turn`}
-                  </span>
+                  {aiThinking ? (
+                    <span className="text-xs font-medium px-3 py-1 rounded-full bg-purple-600/30 text-purple-300 animate-pulse">
+                      🤖 {aiThinking} is thinking...
+                    </span>
+                  ) : (
+                    <span className={`text-xs font-medium px-3 py-1 rounded-full ${isMyTurn ? 'bg-yellow-600/30 text-yellow-300' : 'bg-gray-700/50 text-gray-400'}`}>
+                      {isMyTurn ? "Your turn!" : `${currentPlayerName}'s turn`}
+                    </span>
+                  )}
                 </div>
               )}
 
