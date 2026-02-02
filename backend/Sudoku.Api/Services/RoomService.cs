@@ -25,8 +25,9 @@ public class RoomService
     private readonly TwentyFourService _twentyFourService;
     private readonly BlackjackService _blackjackService;
     private readonly ChessService _chessService;
+    private readonly GuandanService _guandanService;
 
-    public RoomService(IConfiguration config, SudokuGenerator generator, TwentyFourService twentyFourService, BlackjackService blackjackService, ChessService chessService)
+    public RoomService(IConfiguration config, SudokuGenerator generator, TwentyFourService twentyFourService, BlackjackService blackjackService, ChessService chessService, GuandanService guandanService)
     {
         _connectionString = config.GetConnectionString("DefaultConnection")
             ?? throw new InvalidOperationException("No connection string");
@@ -34,6 +35,7 @@ public class RoomService
         _twentyFourService = twentyFourService;
         _blackjackService = blackjackService;
         _chessService = chessService;
+        _guandanService = guandanService;
     }
 
     private SqlConnection GetConnection() => new(_connectionString);
@@ -51,6 +53,7 @@ public class RoomService
             "TwentyFour" => "TwentyFour",
             "Blackjack" => "Blackjack",
             "Chess" => "Chess",
+            "Guandan" => "Guandan",
             _ => "Sudoku"
         };
         var code = GenerateCode();
@@ -67,7 +70,7 @@ public class RoomService
         int puzzleId;
         string puzzleJson;
 
-        if (gameType == "TwentyFour" || gameType == "Blackjack" || gameType == "Chess")
+        if (gameType == "TwentyFour" || gameType == "Blackjack" || gameType == "Chess" || gameType == "Guandan")
         {
             // For card/board games, create a dummy puzzle entry (no board needed)
             puzzleJson = "[]";
@@ -105,7 +108,7 @@ public class RoomService
                 Code = code,
                 PuzzleId = puzzleId,
                 request.HostName,
-                Difficulty = (gameType == "TwentyFour" || gameType == "Blackjack" || gameType == "Chess") ? "N/A" : request.Difficulty,
+                Difficulty = (gameType == "TwentyFour" || gameType == "Blackjack" || gameType == "Chess" || gameType == "Guandan") ? "N/A" : request.Difficulty,
                 CurrentBoard = puzzleJson,
                 PlayerColors = JsonSerializer.Serialize(initialColors),
                 request.IsPublic,
@@ -145,6 +148,13 @@ public class RoomService
             {
                 var chessState = await _chessService.InitializeGame(room.Id);
                 await _chessService.AssignPlayer(room.Id, request.HostName);
+            }
+
+            // Initialize Guandan game state
+            if (gameType == "Guandan")
+            {
+                var guandanState = await _guandanService.InitializeGame(room.Id);
+                await _guandanService.EnsurePlayerInGame(room.Id, request.HostName);
             }
         }
 
@@ -252,6 +262,38 @@ public class RoomService
                 CreatedAt = room.CreatedAt,
                 CompletedAt = room.CompletedAt,
                 BlackjackState = bjResponse
+            };
+        }
+
+        // Handle Guandan game type
+        if (room.GameType == "Guandan")
+        {
+            var guandanState = await _guandanService.GetGameState(room.Id);
+            GuandanStateResponse? guandanResponse = null;
+            if (guandanState != null)
+            {
+                guandanResponse = _guandanService.ToResponse(guandanState);
+            }
+            return new RoomResponse
+            {
+                Code = room.Code,
+                Difficulty = "N/A",
+                Status = room.Status,
+                HostName = room.HostName,
+                Mode = room.Mode,
+                GameType = room.GameType,
+                TimeLimitSeconds = room.TimeLimitSeconds,
+                StartedAt = room.StartedAt,
+                InitialBoard = [],
+                CurrentBoard = [],
+                Solution = [],
+                Members = memberResponses,
+                PlayerColors = playerColors,
+                Notes = new(),
+                IsPublic = room.IsPublic,
+                CreatedAt = room.CreatedAt,
+                CompletedAt = room.CompletedAt,
+                GuandanState = guandanResponse
             };
         }
 
@@ -449,6 +491,12 @@ public class RoomService
         if (room.GameType == "Chess")
         {
             await _chessService.AssignPlayer(room.Id, request.DisplayName);
+        }
+
+        // Ensure player is in Guandan game
+        if (room.GameType == "Guandan")
+        {
+            await _guandanService.EnsurePlayerInGame(room.Id, request.DisplayName);
         }
 
         var roomResponse = await GetRoom(code, request.DisplayName);

@@ -92,6 +92,7 @@ builder.Services.AddSingleton<SudokuGenerator>();
 builder.Services.AddScoped<TwentyFourService>();
 builder.Services.AddScoped<BlackjackService>();
 builder.Services.AddScoped<ChessService>();
+builder.Services.AddScoped<GuandanService>();
 builder.Services.AddScoped<RoomService>();
 builder.Services.AddHostedService<RoomCleanupService>();
 
@@ -264,6 +265,30 @@ using (var scope = app.Services.CreateScope())
                         CurrentTurn NVARCHAR(10) NOT NULL DEFAULT 'White',
                         CapturedJson NVARCHAR(MAX) NOT NULL DEFAULT '{""white"":[],""black"":[]}',
                         DrawOfferFrom NVARCHAR(100) NULL,
+                        CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+                    );
+                END");
+
+            // GuandanGameStates table
+            await conn.ExecuteAsync(@"
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'GuandanGameStates')
+                BEGIN
+                    CREATE TABLE GuandanGameStates (
+                        Id INT IDENTITY(1,1) PRIMARY KEY,
+                        RoomId INT NOT NULL,
+                        PlayersJson NVARCHAR(MAX) NOT NULL DEFAULT '[]',
+                        CurrentPlayJson NVARCHAR(MAX) NOT NULL DEFAULT '[]',
+                        CurrentPlayType NVARCHAR(50) NOT NULL DEFAULT '',
+                        CurrentPlayerIndex INT NOT NULL DEFAULT 0,
+                        LastPlayerIndex INT NOT NULL DEFAULT -1,
+                        ConsecutivePasses INT NOT NULL DEFAULT 0,
+                        Phase NVARCHAR(20) NOT NULL DEFAULT 'Waiting',
+                        TeamALevel INT NOT NULL DEFAULT 2,
+                        TeamBLevel INT NOT NULL DEFAULT 2,
+                        RoundNumber INT NOT NULL DEFAULT 0,
+                        FinishOrderJson NVARCHAR(MAX) NOT NULL DEFAULT '[]',
+                        TributeStateJson NVARCHAR(MAX) NOT NULL DEFAULT '{}',
+                        DealerIndex INT NOT NULL DEFAULT 0,
                         CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
                     );
                 END");

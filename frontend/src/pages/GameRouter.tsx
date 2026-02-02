@@ -5,6 +5,7 @@ import GameRoom from './GameRoom';
 import TwentyFourRoom from './TwentyFourRoom';
 import BlackjackRoom from './BlackjackRoom';
 import ChessRoom from './ChessRoom';
+import GuandanRoom from './GuandanRoom';
 
 interface RoomInfo {
   code: string;
@@ -72,6 +73,10 @@ export default function GameRouter() {
 
   if (gameType === 'Chess') {
     return <ChessRoom />;
+  }
+
+  if (gameType === 'Guandan') {
+    return <GuandanRoom />;
   }
 
   // Default: Sudoku

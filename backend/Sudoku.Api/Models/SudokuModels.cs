@@ -102,6 +102,8 @@ public class RoomResponse
     public BlackjackStateResponse? BlackjackState { get; set; }
     // Chess-specific fields
     public ChessStateResponse? ChessState { get; set; }
+    // Guandan-specific fields
+    public GuandanStateResponse? GuandanState { get; set; }
 }
 
 public class PublicRoomResponse
@@ -276,4 +278,73 @@ public class ChessStateResponse
     public List<string> CapturedBlack { get; set; } = [];
     public Dictionary<string, List<string>> LegalMoves { get; set; } = [];
     public string? DrawOfferFrom { get; set; }
+}
+
+// ========== Guandan Game Models ==========
+
+public class GuandanCard
+{
+    public int Rank { get; set; }   // 2-14 (2-A), 16=BlackJoker, 17=RedJoker
+    public string Suit { get; set; } = ""; // Hearts, Diamonds, Clubs, Spades, Black, Red (for jokers)
+}
+
+public class GuandanPlayer
+{
+    public string Name { get; set; } = "";
+    public List<GuandanCard> Hand { get; set; } = [];
+    public string Team { get; set; } = ""; // A or B
+    public int SeatIndex { get; set; }
+    public int CardsRemaining { get; set; }
+    public bool IsFinished { get; set; }
+    public int FinishOrder { get; set; } // 0=not finished, 1=first, 2=second, etc.
+}
+
+/// <summary>Sanitized player view (no hand data for other players).</summary>
+public class GuandanPlayerView
+{
+    public string Name { get; set; } = "";
+    public string Team { get; set; } = "";
+    public int SeatIndex { get; set; }
+    public int CardsRemaining { get; set; }
+    public bool IsFinished { get; set; }
+    public int FinishOrder { get; set; }
+    public List<GuandanCard>? Hand { get; set; } // null for other players
+}
+
+public class GuandanGameState
+{
+    public int Id { get; set; }
+    public int RoomId { get; set; }
+    public string PlayersJson { get; set; } = "[]";
+    public string CurrentPlayJson { get; set; } = "[]";
+    public string CurrentPlayType { get; set; } = "";
+    public int CurrentPlayerIndex { get; set; }
+    public int LastPlayerIndex { get; set; }
+    public int ConsecutivePasses { get; set; }
+    public string Phase { get; set; } = "Waiting"; // Waiting, Playing, RoundEnd, TributePhase, GameOver
+    public int TeamALevel { get; set; } = 2;
+    public int TeamBLevel { get; set; } = 2;
+    public int RoundNumber { get; set; }
+    public string FinishOrderJson { get; set; } = "[]";
+    public string TributeStateJson { get; set; } = "{}";
+    public int DealerIndex { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+public class GuandanStateResponse
+{
+    public int Id { get; set; }
+    public int RoomId { get; set; }
+    public string Phase { get; set; } = "Waiting";
+    public int CurrentPlayerIndex { get; set; }
+    public int LastPlayerIndex { get; set; }
+    public List<GuandanCard> CurrentPlay { get; set; } = [];
+    public string CurrentPlayType { get; set; } = "";
+    public int TeamALevel { get; set; }
+    public int TeamBLevel { get; set; }
+    public int RoundNumber { get; set; }
+    public List<GuandanPlayerView> Players { get; set; } = [];
+    public List<string> FinishOrder { get; set; } = [];
+    public int DealerIndex { get; set; }
+    public int ConsecutivePasses { get; set; }
 }

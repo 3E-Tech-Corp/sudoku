@@ -55,6 +55,19 @@ const GAMES = [
     features: ['1v1 multiplayer', 'Full move validation', 'Castling & en passant'],
     apiGameType: 'Chess',
   },
+  {
+    id: 'guandan',
+    name: 'Guandan 掼蛋',
+    icon: '🥚',
+    gradient: 'from-red-600 via-rose-700 to-pink-800',
+    hoverGradient: 'hover:from-red-500 hover:via-rose-600 hover:to-pink-700',
+    border: 'border-red-500/30',
+    soloAccent: 'text-red-300 hover:text-red-200',
+    description: "China's #1 card game",
+    longDesc: "The legendary Chinese partnership card game. Team up, strategize, and 'throw eggs' (bombs) at your opponents! 108 cards, 4 players, infinite fun.",
+    features: ['4-player partnerships', 'Level progression', 'Bombs & wild cards'],
+    apiGameType: 'Guandan',
+  },
 ];
 
 export default function Landing() {

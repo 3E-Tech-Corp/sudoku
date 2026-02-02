@@ -70,6 +70,17 @@ const GAME_CONFIG: Record<string, {
     hasMode: false,
     tagline: 'The ultimate game of strategy — checkmate your opponent!',
   },
+  guandan: {
+    apiGameType: 'Guandan',
+    name: 'Guandan 掼蛋',
+    icon: '🥚',
+    accent: 'text-red-400',
+    accentBg: 'bg-red-600',
+    buttonClass: 'bg-red-600 hover:bg-red-700 disabled:bg-red-800',
+    hasDifficulty: false,
+    hasMode: false,
+    tagline: 'China\'s most popular card game — team up and throw some eggs!',
+  },
 };
 
 export default function GameLobby() {

@@ -12,6 +12,7 @@ public class GameHub : Hub
     private readonly TwentyFourService _twentyFourService;
     private readonly BlackjackService _blackjackService;
     private readonly ChessService _chessService;
+    private readonly GuandanService _guandanService;
 
     private static readonly JsonSerializerOptions _jsonOpts = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
@@ -21,12 +22,13 @@ public class GameHub : Hub
     // Track rooms where host has left: roomCode → (hostName, leftAt)
     private static readonly ConcurrentDictionary<string, (string HostName, DateTime LeftAt)> _hostLeftTimers = new();
 
-    public GameHub(RoomService roomService, TwentyFourService twentyFourService, BlackjackService blackjackService, ChessService chessService)
+    public GameHub(RoomService roomService, TwentyFourService twentyFourService, BlackjackService blackjackService, ChessService chessService, GuandanService guandanService)
     {
         _roomService = roomService;
         _twentyFourService = twentyFourService;
         _blackjackService = blackjackService;
         _chessService = chessService;
+        _guandanService = guandanService;
     }
 
     /// <summary>Get all room codes that have at least one connected player.</summary>
@@ -97,6 +99,12 @@ public class GameHub : Hub
             {
                 var state = await _blackjackService.EnsurePlayerInGame(room.Id, displayName);
                 await Clients.Group(code).SendAsync("BJStateUpdated", BlackjackService.SanitizeState(state));
+            }
+            if (room?.GameType == "Guandan")
+            {
+                var state = await _guandanService.EnsurePlayerInGame(room.Id, displayName);
+                // Send personalized state to each connection
+                await BroadcastGuandanState(code, state);
             }
         }
         catch { /* non-critical — player can still be added on first bet */ }
@@ -688,6 +696,116 @@ public class GameHub : Hub
         catch (InvalidOperationException ex)
         {
             await Clients.Caller.SendAsync("ChessError", ex.Message);
+        }
+    }
+
+    // ==================== Guandan methods ====================
+
+    private async Task BroadcastGuandanState(string code, Models.GuandanGameState state)
+    {
+        // Send personalized state to each connected player in the room
+        var roomConnections = _connections.Where(kvp => kvp.Value.RoomCode == code).ToList();
+        foreach (var conn in roomConnections)
+        {
+            var personalizedState = GuandanService.SanitizeStateForPlayer(state, conn.Value.DisplayName);
+            await Clients.Client(conn.Key).SendAsync("GDStateUpdated", personalizedState);
+        }
+    }
+
+    public async Task GuandanStartRound(string code)
+    {
+        code = code.ToUpper();
+        var room = await _roomService.GetRoomByCode(code);
+        if (room == null || room.GameType != "Guandan") return;
+
+        try
+        {
+            var state = await _guandanService.StartRound(room.Id);
+            await BroadcastGuandanState(code, state);
+        }
+        catch (InvalidOperationException ex)
+        {
+            await Clients.Caller.SendAsync("GDError", ex.Message);
+        }
+    }
+
+    public async Task GuandanPlayCards(string code, string player, string cardsJson)
+    {
+        code = code.ToUpper();
+        var room = await _roomService.GetRoomByCode(code);
+        if (room == null || room.GameType != "Guandan") return;
+
+        try
+        {
+            var cards = JsonSerializer.Deserialize<List<Models.GuandanCard>>(cardsJson, _jsonOpts);
+            if (cards == null || cards.Count == 0)
+            {
+                await Clients.Caller.SendAsync("GDError", "No cards selected");
+                return;
+            }
+
+            var (state, error) = await _guandanService.PlayCards(room.Id, player, cards);
+            if (error != null)
+            {
+                await Clients.Caller.SendAsync("GDError", error);
+                return;
+            }
+            await BroadcastGuandanState(code, state);
+        }
+        catch (InvalidOperationException ex)
+        {
+            await Clients.Caller.SendAsync("GDError", ex.Message);
+        }
+    }
+
+    public async Task GuandanPass(string code, string player)
+    {
+        code = code.ToUpper();
+        var room = await _roomService.GetRoomByCode(code);
+        if (room == null || room.GameType != "Guandan") return;
+
+        try
+        {
+            var (state, error) = await _guandanService.Pass(room.Id, player);
+            if (error != null)
+            {
+                await Clients.Caller.SendAsync("GDError", error);
+                return;
+            }
+            await BroadcastGuandanState(code, state);
+        }
+        catch (InvalidOperationException ex)
+        {
+            await Clients.Caller.SendAsync("GDError", ex.Message);
+        }
+    }
+
+    public async Task GuandanPayTribute(string code, string player, string cardJson)
+    {
+        code = code.ToUpper();
+        var room = await _roomService.GetRoomByCode(code);
+        if (room == null || room.GameType != "Guandan") return;
+
+        try
+        {
+            var card = JsonSerializer.Deserialize<Models.GuandanCard>(cardJson, _jsonOpts);
+            if (card == null)
+            {
+                await Clients.Caller.SendAsync("GDError", "Invalid card");
+                return;
+            }
+
+            var (state, error) = await _guandanService.PayTribute(room.Id, player, card);
+            if (error != null)
+            {
+                await Clients.Caller.SendAsync("GDError", error);
+                return;
+            }
+            await BroadcastGuandanState(code, state);
+        }
+        catch (InvalidOperationException ex)
+        {
+            await Clients.Caller.SendAsync("GDError", ex.Message);
         }
     }
 }
